@@ -66,8 +66,9 @@ function afterRemove(list: MessageHeader[]): void {
 export async function remove(permanent = false, list = current()): Promise<void> {
   if (!list.length) return;
   const s = useApp.getState().settings;
-  const inTrash = list.every((m) => folderById(m.folderId)?.specialUse === 'trash');
-  if (permanent || inTrash) {
+  // in trash/junk or without a trash folder the backend deletes for good: always confirm, no undo
+  const inTrash = permanent || (await api.mail.isPermanentDelete(ids(list)).catch(() => true));
+  if (inTrash) {
     if (!(await confirm('Endgültig löschen', `${list.length === 1 ? 'Diese Nachricht wird' : `${list.length} Nachrichten werden`} endgültig gelöscht und können nicht wiederhergestellt werden.`, 'Löschen', true))) return;
   } else if (s?.mail.confirmDelete) {
     if (!(await confirm('Löschen', `${list.length === 1 ? 'Nachricht' : `${list.length} Nachrichten`} in „Gelöschte Elemente“ verschieben?`, 'Löschen'))) return;

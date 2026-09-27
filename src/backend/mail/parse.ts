@@ -34,9 +34,20 @@ const REMOTE_RE = /(<img[^>]+src\s*=\s*["']?\s*https?:|url\(\s*["']?\s*https?:|<
 
 /** Removes active content. The HTML is additionally rendered in a sandboxed iframe without scripts and with a strict CSP. */
 export function sanitizeHtml(html: string): string {
+  // repeat until stable so that nested constructs like "<me<base>ta …>" cannot reassemble
+  let prev = '';
+  let cur = html;
+  for (let i = 0; i < 10 && prev !== cur; i++) {
+    prev = cur;
+    cur = sanitizeOnce(cur);
+  }
+  return cur;
+}
+
+function sanitizeOnce(html: string): string {
   return html
     .replace(/<(script|iframe|object|embed|applet|frame|frameset|form|noscript)\b[\s\S]*?<\/\1\s*>/gi, '')
-    .replace(/<(script|iframe|object|embed|applet|frame|frameset|meta|base|link(?![^>]*stylesheet))\b[^>]*>/gi, '')
+    .replace(/<\/?(script|iframe|object|embed|applet|frame|frameset|meta|base|link|form|noscript)\b[^>]*>/gi, '')
     .replace(/[\s/]on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, ' ')
     .replace(/(href|src|action)\s*=\s*(["'])\s*javascript:[^"']*\2/gi, '$1="#"');
 }

@@ -88,9 +88,18 @@ export class CalendarService {
     return r ? (JSON.parse(r.json) as CalendarEvent) : null;
   }
 
-  byUid(uid: string): CalendarEvent | null {
-    const r = this.db.get<EventRow>('SELECT id, json FROM events WHERE uid = ?', uid);
-    return r ? (JSON.parse(r.json) as CalendarEvent) : null;
+  /** The series master / single event (recurrenceId null) or a specific exception of a series */
+  byUid(uid: string, recurrenceId: number | null = null): CalendarEvent | null {
+    const rows = this.db.all<EventRow>('SELECT id, json FROM events WHERE uid = ?', uid).map((r) => JSON.parse(r.json) as CalendarEvent);
+    return rows.find((e) => (e.recurrenceId ?? null) === recurrenceId) ?? null;
+  }
+
+  /** Stores an exception of a series: the master gets an EXDATE so the occurrence is not shown twice */
+  private saveException(e: CalendarEvent, calendarId: string): void {
+    const master = this.byUid(e.uid);
+    if (master && e.recurrenceId != null && !master.exdates.includes(e.recurrenceId)) this.save({ ...master, exdates: [...master.exdates, e.recurrenceId] }, true);
+    const existing = this.byUid(e.uid, e.recurrenceId ?? null);
+    this.save({ ...e, id: existing?.id ?? e.id, calendarId: master?.calendarId ?? calendarId, recurrence: null }, true);
   }
 
   save(e: CalendarEvent, silent = false): CalendarEvent {
@@ -129,9 +138,16 @@ export class CalendarService {
   importText(calendarId: string, text: string): number {
     const { events } = parseIcs(text, calendarId);
     this.db.tx(() => {
-      for (const e of events) {
+      // masters first, then their exceptions (RECURRENCE-ID)
+      for (const e of [...events].sort((a, b) => Number(a.recurrenceId != null) - Number(b.recurrenceId != null))) {
+        if (e.recurrenceId != null) {
+          this.saveException(e, calendarId);
+          continue;
+        }
         const existing = this.byUid(e.uid);
-        this.save({ ...e, id: existing?.id ?? e.id, calendarId }, true);
+        // keep exdates created by already stored exceptions
+        const exdates = [...new Set([...e.exdates, ...(existing?.exdates ?? [])])];
+        this.save({ ...e, id: existing?.id ?? e.id, calendarId, exdates }, true);
       }
     });
     emit('calendar:changed', null);
@@ -223,11 +239,23 @@ export class CalendarService {
       const attendees: Attendee[] = inv.attendees.some((a) => a.email.toLowerCase() === me)
         ? inv.attendees.map((a) => (a.email.toLowerCase() === me ? { ...a, status: response } : a))
         : [...inv.attendees, { name: account.displayName, email: account.email, status: response }];
-      const existing = this.byUid(inv.uid);
+      const rid = inv.recurrenceId ?? null;
+      const found = this.byUid(inv.uid, rid);
+      // only an invitation from the same organizer may update or remove an existing event
+      const sameOrganizer = (e: CalendarEvent | null): boolean => !!e && (e.organizer?.address ?? '').toLowerCase() === (inv.organizer?.address ?? '').toLowerCase();
+      const existing = sameOrganizer(found) ? found : null;
+      const master = rid != null ? this.byUid(inv.uid) : null;
+      const showAs = response === 'tentative' ? 'tentative' : inv.showAs;
       if (response === 'declined') {
-        if (existing) this.remove(existing.id);
+        if (rid != null && master && sameOrganizer(master)) {
+          if (!master.exdates.includes(rid)) this.save({ ...master, exdates: [...master.exdates, rid] });
+          if (existing) this.remove(existing.id);
+        } else if (existing) this.remove(existing.id);
+      } else if (rid != null && master && sameOrganizer(master)) {
+        this.saveException({ ...inv, id: existing?.id ?? inv.id, attendees, showAs }, calendarId);
+        emit('calendar:changed', null);
       } else {
-        this.save({ ...inv, id: existing?.id ?? inv.id, calendarId: existing?.calendarId ?? calendarId, attendees, showAs: response === 'tentative' ? 'tentative' : inv.showAs });
+        this.save({ ...inv, id: existing?.id ?? inv.id, uid: found && !existing ? `${inv.uid}#${newId()}` : inv.uid, calendarId: existing?.calendarId ?? calendarId, attendees, showAs });
       }
       if (inv.organizer?.address) {
         const reply = buildIcs([{ ...inv, attendees: attendees.filter((a) => a.email.toLowerCase() === me) }], { method: 'REPLY' });

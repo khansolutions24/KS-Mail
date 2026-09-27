@@ -367,6 +367,8 @@ export function Composer({ draft: initial, onClose, standalone }: { draft: Draft
   const editorRef = useRef<HTMLDivElement>(null);
   const draftRef = useRef(d);
   const dirty = useRef(false);
+  /** Last editor HTML; refs are already detached when the unmount cleanup runs */
+  const htmlRef = useRef<string | null>(null);
   draftRef.current = d;
 
   // editor content is uncontrolled: set once; replies start typing at the top of the body
@@ -396,6 +398,18 @@ export function Composer({ draft: initial, onClose, standalone }: { draft: Draft
   }, [standalone]);
 
   const current = useCallback((): Draft => ({ ...draftRef.current, html: editorRef.current?.innerHTML ?? draftRef.current.html }), []);
+
+  // keep typed text when the composer is hidden (other message selected, module switch)
+  useEffect(
+    () => () => {
+      const html = editorRef.current?.innerHTML ?? htmlRef.current;
+      if (!standalone && html !== null && useApp.getState().composers.some((c) => c.id === draftRef.current.id)) {
+        useApp.getState().updateComposer({ ...draftRef.current, html });
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
 
   // crash-safe local autosave
   useEffect(() => {
@@ -717,8 +731,9 @@ export function Composer({ draft: initial, onClose, standalone }: { draft: Draft
         contentEditable
         suppressContentEditableWarning
         spellCheck
-        onInput={() => {
+        onInput={(e) => {
           dirty.current = true;
+          htmlRef.current = e.currentTarget.innerHTML;
         }}
         onPaste={(e) => {
           const files = Array.from(e.clipboardData.files);

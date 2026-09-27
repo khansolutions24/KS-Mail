@@ -3,6 +3,7 @@
 import crypto from 'node:crypto';
 import http from 'node:http';
 import type { OAuthProvider, Settings } from '@shared/types';
+import { escapeHtml } from '@shared/util';
 import { platform } from '../platform';
 
 interface ProviderConf {
@@ -87,11 +88,16 @@ export async function oauthLogin(provider: OAuthProvider, email: string, setting
         return;
       }
       const err = url.searchParams.get('error');
-      const ok = !err && url.searchParams.get('state') === state && url.searchParams.get('code');
+      // ignore stray requests (favicon, probes) that do not belong to this login
+      if (url.searchParams.get('state') !== state) {
+        res.writeHead(400).end();
+        return;
+      }
+      const ok = !err && url.searchParams.get('code');
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       res.end(
         `<!doctype html><meta charset="utf-8"><title>KS Mail</title><body style="font-family:system-ui;padding:40px;text-align:center">` +
-          (ok ? '<h2>Anmeldung erfolgreich</h2><p>Sie können dieses Fenster schließen und zu KS Mail zurückkehren.</p>' : `<h2>Anmeldung fehlgeschlagen</h2><p>${err ?? 'Ungültige Antwort'}</p>`) +
+          (ok ? '<h2>Anmeldung erfolgreich</h2><p>Sie können dieses Fenster schließen und zu KS Mail zurückkehren.</p>' : `<h2>Anmeldung fehlgeschlagen</h2><p>${escapeHtml(err ?? 'Ungültige Antwort')}</p>`) +
           '</body>'
       );
       clearTimeout(timer);

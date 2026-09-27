@@ -271,6 +271,8 @@ export interface CalendarEvent {
   isPrivate: boolean;
   onlineMeetingUrl: string;
   updated: number;
+  /** Set on an exception of a recurring series: start (ms) of the occurrence it replaces */
+  recurrenceId?: number | null;
 }
 
 /** A concrete occurrence of an event within a range */

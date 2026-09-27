@@ -140,7 +140,7 @@ export function colorFor(s: string): string {
 
 export function deepMerge<T>(base: T, patch: unknown): T {
   if (patch === undefined) return base;
-  if (Array.isArray(base) || typeof base !== 'object' || base === null) return (patch as T) ?? base;
+  if (Array.isArray(base) || typeof base !== 'object' || base === null) return patch as T;
   if (typeof patch !== 'object' || patch === null || Array.isArray(patch)) return base;
   const out: Record<string, unknown> = { ...(base as Record<string, unknown>) };
   for (const [k, v] of Object.entries(patch as Record<string, unknown>)) {

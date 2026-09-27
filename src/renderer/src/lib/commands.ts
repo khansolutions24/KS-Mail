@@ -97,6 +97,8 @@ export function installKeyboard(): () => void {
     for (const b of hits) {
       // plain keys (Delete, arrows, Enter …) never fire while typing; Mod+A / Mod+Z etc. stay native in inputs
       if (typing && (!b.combo.mod || (b.combo.mod && ['a', 'c', 'v', 'x', 'z', 'y'].includes(b.combo.key) && !b.combo.shift))) continue;
+      // Enter/Space on a focused button, link or menu entry keeps its native meaning
+      if (!b.combo.mod && (b.combo.key === 'Enter' || b.combo.key === ' ') && (e.target as HTMLElement | null)?.closest?.('button, a, select, [role=menuitem], [role=tab], [role=option], [role=checkbox], .menu')) continue;
       if (!hasCommand(b.id)) continue;
       e.preventDefault();
       e.stopPropagation();

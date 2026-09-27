@@ -18,7 +18,15 @@ onEmit((channel, payload) => {
   for (const c of clients) c.send(msg);
 });
 
-wss.on('connection', (ws) => {
+const ALLOWED_ORIGINS = new Set(['http://localhost:5184', 'http://127.0.0.1:5184']);
+
+wss.on('connection', (ws, req) => {
+  // websites open in the same browser must not be able to talk to the backend
+  const origin = req.headers.origin;
+  if (origin && !ALLOWED_ORIGINS.has(origin)) {
+    ws.close(1008, 'origin not allowed');
+    return;
+  }
   clients.add(ws);
   ws.on('close', () => clients.delete(ws));
   ws.on('message', async (data) => {

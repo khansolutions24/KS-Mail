@@ -65,6 +65,8 @@ export interface MailApi {
   move(ids: number[], targetFolderId: string): Promise<void>;
   copy(ids: number[], targetFolderId: string): Promise<void>;
   remove(ids: number[], permanent?: boolean): Promise<void>;
+  /** True when deleting these messages would remove them for good (already in trash/junk, or no trash folder) */
+  isPermanentDelete(ids: number[]): Promise<boolean>;
   archive(ids: number[]): Promise<void>;
   junk(ids: number[], isJunk: boolean): Promise<void>;
   markFolderRead(folderId: string): Promise<void>;

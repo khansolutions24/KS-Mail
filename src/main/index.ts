@@ -319,6 +319,8 @@ function setBadge(n: number): void {
 
 async function printHtml(html: string): Promise<void> {
   const w = new BrowserWindow({ show: false, webPreferences: { javascript: false, sandbox: true } });
+  w.webContents.on('will-navigate', (e) => e.preventDefault());
+  w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   await w.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
   await new Promise<void>((resolve) => w.webContents.print({ printBackground: true }, () => resolve()));
   w.destroy();

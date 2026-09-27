@@ -128,6 +128,7 @@ export function createBackend(): Backend {
       move: (ids, target) => mail.move(ids, target),
       copy: (ids, target) => mail.copy(ids, target),
       remove: (ids, permanent) => mail.remove(ids, !!permanent),
+      isPermanentDelete: async (ids) => mail.isPermanentDelete(ids),
       archive: (ids) => mail.archive(ids),
       junk: (ids, isJunk) => mail.junk(ids, isJunk),
       markFolderRead: (id) => mail.markFolderRead(id),
@@ -264,6 +265,9 @@ export function createBackend(): Backend {
         emit('settings:changed', config.getSettings());
         emit('accounts:changed', null);
         emit('contacts:changed', null);
+        emit('tasks:changed', null);
+        emit('notes:changed', null);
+        emit('calendar:changed', null);
         toast('success', 'Import abgeschlossen. Passwörter müssen neu eingegeben werden.');
         return true;
       }

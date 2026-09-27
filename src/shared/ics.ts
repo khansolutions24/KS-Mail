@@ -228,6 +228,7 @@ export function parseIcs(text: string, calendarId = ''): ParsedCalendar {
         end = start.ms + (dur ? parseDuration(dur.value) : start.allDay ? 86400000 : 0);
       }
       const rr = get('RRULE');
+      const rid = get('RECURRENCE-ID');
       const exdates: number[] = [];
       for (const p of c.props.filter((p) => p.name === 'EXDATE')) {
         for (const v of p.value.split(',')) {
@@ -265,7 +266,8 @@ export function parseIcs(text: string, calendarId = ''): ParsedCalendar {
         categories: (get('CATEGORIES')?.value ?? '').split(',').map((s) => unescapeText(s).trim()).filter(Boolean),
         isPrivate: ['PRIVATE', 'CONFIDENTIAL'].includes(get('CLASS')?.value.toUpperCase() ?? ''),
         onlineMeetingUrl: get('X-MICROSOFT-SKYPETEAMSMEETINGURL')?.value ?? get('URL')?.value ?? '',
-        updated: Date.now()
+        updated: Date.now(),
+        recurrenceId: rid ? (parseDate(rid.value, rid.params)?.ms ?? null) : null
       });
     }
   }
@@ -303,6 +305,7 @@ function quoteParam(v: string): string {
 
 export function eventToVEvent(e: CalendarEvent, opts: { partstatFor?: string; partstat?: Attendee['status'] } = {}): string[] {
   const lines = ['BEGIN:VEVENT', `UID:${e.uid}`, `DTSTAMP:${formatUtc(Date.now())}`];
+  if (e.recurrenceId != null) lines.push(e.allDay ? `RECURRENCE-ID;VALUE=DATE:${formatLocalDate(e.recurrenceId)}` : `RECURRENCE-ID:${formatUtc(e.recurrenceId)}`);
   if (e.allDay) {
     lines.push(`DTSTART;VALUE=DATE:${formatLocalDate(e.start)}`, `DTEND;VALUE=DATE:${formatLocalDate(Math.max(e.end, e.start + 86400000))}`);
   } else {

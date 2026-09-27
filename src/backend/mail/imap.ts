@@ -348,7 +348,7 @@ export class ImapAccount {
         const unseen = await c.search({ seen: false }, { uid: true });
         this.store.setFolderCounts(fid, Array.isArray(unseen) ? unseen.length : row.unread, mb.exists);
         this.store.setFolderSync(fid, validity, mb.highestModseq ? mb.highestModseq.toString() : null);
-        return { folderId: fid, newIds, changed, initial: knownMax <= 0 };
+        return { folderId: fid, newIds, changed, initial: !row.uid_validity || row.uid_validity !== validity };
       } finally {
         lock.release();
       }

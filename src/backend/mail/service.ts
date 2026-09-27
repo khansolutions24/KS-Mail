@@ -22,7 +22,7 @@ import type {
 } from '@shared/types';
 import { VIRTUAL } from '@shared/types';
 import { applicableRules, needsBody, type RuleSubject } from '@shared/rules';
-import { escapeHtml, formatAddressList, htmlToText, isValidEmail, newId, prefixSubject, safeFileName, snippetOf } from '@shared/util';
+import { escapeHtml, formatAddressList, htmlToText, isValidEmail, newId, parseAddressList, prefixSubject, safeFileName, snippetOf } from '@shared/util';
 import { emit, toast } from '../events';
 import { platform } from '../platform';
 import type { ConfigStore } from '../store/config';
@@ -607,6 +607,9 @@ export class MailService {
 
   async openAttachment(id: number, index: number): Promise<void> {
     const a = await this.attachment(id, index);
+    if (BLOCKED_EXT.test(a.filename.trim())) {
+      throw new Error(`„${a.filename}“ ist ein ausführbarer Dateityp und wird aus Sicherheitsgründen nicht direkt geöffnet. Speichern Sie die Datei, wenn Sie ihr vertrauen.`);
+    }
     const dir = path.join(os.tmpdir(), 'ks-mail', String(id));
     await fs.promises.mkdir(dir, { recursive: true });
     const file = path.join(dir, safeFileName(a.filename));
@@ -652,7 +655,9 @@ export class MailService {
       ${h.cc.length ? `<tr><td><b>Cc:</b></td><td>${escapeHtml(formatAddressList(h.cc))}</td></tr>` : ''}
       ${b.attachments.filter((a) => !a.inline).length ? `<tr><td><b>Anlagen:</b></td><td>${b.attachments.filter((a) => !a.inline).map((a) => escapeHtml(a.filename)).join(', ')}</td></tr>` : ''}
       </table><hr>`;
-    await platform().printHtml(`<!doctype html><meta charset="utf-8"><body>${head}${b.html ?? ''}</body>`);
+    // remote content stays blocked when printing; scripts are disabled in the print window
+    const csp = `default-src 'none'; img-src data:; style-src 'unsafe-inline'; font-src data:`;
+    await platform().printHtml(`<!doctype html><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="${csp}"><body>${head}${b.html ?? ''}</body>`);
   }
 
   async serverSearch(fid: string, text: string): Promise<MessagePage> {
@@ -744,8 +749,9 @@ export class MailService {
         continue;
       }
       const r = this.runner(src.account_id);
+      assertSettled(list);
       const unread = list.filter((m) => !m.seen).length;
-      const uids = list.map((m) => m.uid).filter((u) => u > 0);
+      const uids = list.map((m) => m.uid);
       const byUid = new Map(list.map((m) => [m.uid, m.id]));
       // local first: placeholders with negative uids in the target
       for (const m of list) this.store.moveRow(m.id, target, this.store.nextTempUid(target));
@@ -806,8 +812,17 @@ export class MailService {
     await this.syncOne(trow.account_id, trow.path);
   }
 
+  /** True when the messages would be deleted for good (no trash folder, or already in trash/junk) */
+  isPermanentDelete(ids: number[]): boolean {
+    return this.store.byIds(ids).some((m) => {
+      const src = this.store.folderRow(m.folder_id);
+      return !src || src.special_use === 'trash' || src.special_use === 'junk' || !this.store.folderBySpecial(m.account_id, 'trash');
+    });
+  }
+
   async remove(ids: number[], permanent: boolean): Promise<void> {
     const rows = this.store.byIds(ids);
+    assertSettled(rows);
     for (const [fid, list] of groupBy(rows, (r) => r.folder_id)) {
       const src = this.store.folderRow(fid);
       if (!src) continue;
@@ -963,16 +978,20 @@ export class MailService {
     if (!b.listUnsubscribe || !row) throw new Error('Diese Nachricht enthält keinen Abmelde-Link.');
     if (b.listUnsubscribe.startsWith('mailto:')) {
       const url = new URL(b.listUnsubscribe);
+      // exactly one valid recipient; subject/body come from the sender and are sent as plain text
+      const to = parseAddressList(decodeURIComponent(url.pathname)).filter((x) => isValidEmail(x.address));
+      if (to.length !== 1) throw new Error('Der Abmelde-Link dieser Nachricht ist ungültig.');
       await this.enqueue(
         {
           id: newId(),
           accountId: row.account_id,
-          to: [{ name: '', address: decodeURIComponent(url.pathname) }],
+          to,
           cc: [],
           bcc: [],
-          subject: url.searchParams.get('subject') ?? 'unsubscribe',
-          html: url.searchParams.get('body') ?? 'unsubscribe',
-          attachments: []
+          subject: (url.searchParams.get('subject') ?? 'unsubscribe').slice(0, 200),
+          html: escapeHtml(url.searchParams.get('body') ?? 'unsubscribe').slice(0, 2000),
+          attachments: [],
+          plainText: true
         },
         0
       );
@@ -1094,7 +1113,8 @@ export class MailService {
     try {
       const due = this.db.all<{ id: string; draft_json: string }>(`SELECT id, draft_json FROM outbox WHERE status = 'queued' AND send_at <= ? ORDER BY send_at`, Date.now());
       for (const item of due) {
-        this.db.run(`UPDATE outbox SET status = 'sending' WHERE id = ?`, item.id);
+        // claim atomically: the user may have cancelled (undo send) while earlier items were being delivered
+        if (!this.db.run(`UPDATE outbox SET status = 'sending' WHERE id = ? AND status = 'queued'`, item.id).changes) continue;
         emit('outbox:changed', null);
         const d = JSON.parse(item.draft_json) as Draft & { extra?: ExtraParts };
         try {
@@ -1155,7 +1175,18 @@ export class MailService {
     await this.remove([id], true).catch(() => undefined);
   }
 
-  async saveDraft(d: Draft): Promise<Draft> {
+  private draftChains = new Map<string, Promise<unknown>>();
+  /** Latest server copy per local draft id (a second save must replace that one, not the stale id it was given) */
+  private draftServerIds = new Map<string, number | undefined>();
+
+  saveDraft(d: Draft): Promise<Draft> {
+    const prev = this.draftChains.get(d.id) ?? Promise.resolve();
+    const next = prev.catch(() => undefined).then(() => this.saveDraftNow({ ...d, serverDraftMessageId: this.draftServerIds.has(d.id) ? this.draftServerIds.get(d.id) : d.serverDraftMessageId }));
+    this.draftChains.set(d.id, next);
+    return next;
+  }
+
+  private async saveDraftNow(d: Draft): Promise<Draft> {
     const a = this.config.getAccount(d.accountId);
     if (!a) throw new Error('Absenderkonto nicht gefunden.');
     this.saveLocalDraft(d);
@@ -1173,8 +1204,10 @@ export class MailService {
     // attachments from the previous server copy are embedded now; keep references valid before deleting it
     const old = d.serverDraftMessageId;
     await r.remote.syncFolder(drafts.path, a.initialLimit);
-    const row = uid ? this.store.byUid(drafts.id, uid) : undefined;
+    // servers without UIDPLUS return no uid: find the copy by its Message-ID
+    const row = uid ? this.store.byUid(drafts.id, uid) : this.db.get<MessageRow>('SELECT * FROM messages WHERE folder_id = ? AND message_id = ? ORDER BY uid DESC LIMIT 1', drafts.id, msg.messageId);
     const next: Draft = { ...d, serverDraftMessageId: row?.id };
+    this.draftServerIds.set(d.id, row?.id);
     if (row) {
       const b = await this.body(row.id).catch(() => null);
       if (b) next.attachments = b.attachments.filter((x) => !x.inline).map((x) => ({ id: newId(), filename: x.filename, contentType: x.contentType, size: x.size, fromMessage: { messageId: row.id, index: x.index } }));
@@ -1186,8 +1219,12 @@ export class MailService {
   }
 
   async discardDraft(d: Draft): Promise<void> {
+    await this.draftChains.get(d.id)?.catch(() => undefined);
     this.db.run('DELETE FROM local_drafts WHERE id = ?', d.id);
-    if (d.serverDraftMessageId) await this.removeServerDraft(d.serverDraftMessageId);
+    const serverId = this.draftServerIds.has(d.id) ? this.draftServerIds.get(d.id) : d.serverDraftMessageId;
+    this.draftServerIds.delete(d.id);
+    this.draftChains.delete(d.id);
+    if (serverId) await this.removeServerDraft(serverId);
   }
 
   localDrafts(): Draft[] {
@@ -1238,11 +1275,17 @@ function groupBy<T>(list: T[], key: (t: T) => string): Map<string, T[]> {
   return m;
 }
 
+/** Body of a message for quoting. Style sheets are dropped: in the composer they would apply to the whole app. */
 function stripDocument(html: string): string {
   const body = /<body[^>]*>([\s\S]*)<\/body>/i.exec(html);
-  const styles = [...html.matchAll(/<style[^>]*>[\s\S]*?<\/style>/gi)].map((m) => m[0]).join('');
-  return styles + (body ? body[1] : html);
+  return (body ? body[1] : html).replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '');
 }
+
+function assertSettled(rows: MessageRow[]): void {
+  if (rows.some((r) => r.uid <= 0)) throw new Error('Die Nachricht wird gerade noch verschoben – bitte einen Moment warten und erneut versuchen.');
+}
+
+const BLOCKED_EXT = /\.(exe|com|bat|cmd|msi|msp|scr|pif|vbs|vbe|js|jse|wsf|wsh|hta|lnk|ps1|psm1|reg|cpl|jar|app|command|pkg|dmg|scpt|sh|appref-ms|iso|img|vhd|vhdx)$/i;
 
 function uniquePath(dir: string, name: string): string {
   let p = path.join(dir, name);
