@@ -49,7 +49,8 @@ Passwörter und Tokens werden mit dem Schlüsselbund des Betriebssystems verschl
 Voraussetzung: [Node.js](https://nodejs.org) 22 oder neuer.
 
 ```bash
-cd ks-mail
+git clone https://github.com/khansolutions24/KS-Mail.git
+cd KS-Mail
 npm install
 npm run dev          # App mit Hot-Reload starten
 ```
