@@ -45,7 +45,12 @@ export function htmlToText(html: string): string {
 }
 
 export function snippetOf(text: string, max = 200): string {
-  return text.replace(/\s+/g, ' ').trim().slice(0, max);
+  return text
+    .replace(/\[(https?:|cid:|mailto:)[^\]]*\]/g, '')
+    .replace(/<https?:[^>]*>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max);
 }
 
 export function formatAddress(a: Address): string {

@@ -6,6 +6,7 @@ import path from 'node:path';
 import nodemailer from 'nodemailer';
 import type Mail from 'nodemailer/lib/mailer';
 import type { Account } from '@shared/types';
+import { htmlToText, snippetOf } from '@shared/util';
 import type { SyncResult } from './imap';
 import { parseRaw, addrList } from './parse';
 import type { Remote } from './remote';
@@ -325,7 +326,7 @@ export class DemoRemote implements Remote {
     const fid = folderId(this.account.id, p);
     const uid = Math.max(0, this.store.maxUid(fid)) + 1;
     const refs = parsed.references ? (Array.isArray(parsed.references) ? parsed.references : [parsed.references]) : [];
-    const text = parsed.text ?? '';
+    const text = parsed.text || (typeof parsed.html === 'string' ? htmlToText(parsed.html) : '');
     this.store.insert({
       accountId: this.account.id,
       folderId: fid,
@@ -341,7 +342,7 @@ export class DemoRemote implements Remote {
       size: raw.length,
       flags: new Set(flags),
       hasAttachments: parsed.attachments.some((a) => a.contentDisposition !== 'inline'),
-      snippet: text.replace(/\s+/g, ' ').trim().slice(0, 200),
+      snippet: snippetOf(text),
       headers: {}
     });
     this.store.recount([fid]);

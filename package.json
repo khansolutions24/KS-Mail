@@ -44,7 +44,6 @@
     "lucide-react": "^1.48.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-resizable-panels": "^4.14.1",
     "smtp-server": "^3.19.13",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",

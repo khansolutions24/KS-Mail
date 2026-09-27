@@ -93,7 +93,8 @@ export interface MailApi {
 export interface ComposeApi {
   /** Builds a reply/forward draft from an existing message */
   prepare(mode: 'reply' | 'replyAll' | 'forward' | 'edit', messageId: number): Promise<Draft>;
-  send(draft: Draft): Promise<void>;
+  /** Queues the draft in the outbox (undo-send delay / send later); returns the outbox id */
+  send(draft: Draft): Promise<string>;
   saveDraft(draft: Draft): Promise<Draft>;
   discardDraft(draft: Draft): Promise<void>;
   pickFiles(): Promise<{ filename: string; contentType: string; size: number; path: string }[]>;

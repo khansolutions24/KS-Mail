@@ -7,15 +7,17 @@ directories:
 files:
   - out/**
   - package.json
-asarUnpack:
-  - build/icon.png
 extraResources:
   - from: build/icon.png
     to: icon.png
   - from: build/tray.png
     to: tray.png
+  - from: build/tray@2x.png
+    to: tray@2x.png
   - from: build/trayTemplate.png
     to: trayTemplate.png
+  - from: build/trayTemplate@2x.png
+    to: trayTemplate@2x.png
 protocols:
   - name: E-Mail
     schemes: [mailto]

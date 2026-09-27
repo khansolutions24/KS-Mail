@@ -1,0 +1,304 @@
+/* Notes module (sticky notes) */
+
+/* pastel note colors: --note-bg card background, --note-bar accent strip, --note-text text */
+:root {
+  --note-swatch-yellow: #f7d94c;
+  --note-swatch-green: #7ed08a;
+  --note-swatch-pink: #f59ac4;
+  --note-swatch-purple: #b9a2f0;
+  --note-swatch-blue: #7cc2f0;
+  --note-swatch-gray: #b8bec4;
+}
+.note-c-yellow {
+  --note-bg: #fff7c7;
+  --note-bar: #f7d94c;
+  --note-text: #3b3000;
+}
+.note-c-green {
+  --note-bg: #e3f6e3;
+  --note-bar: #7ed08a;
+  --note-text: #10331a;
+}
+.note-c-pink {
+  --note-bg: #fde4ef;
+  --note-bar: #f59ac4;
+  --note-text: #4a1230;
+}
+.note-c-purple {
+  --note-bg: #ece6fb;
+  --note-bar: #b9a2f0;
+  --note-text: #2c1a55;
+}
+.note-c-blue {
+  --note-bg: #e1f1fc;
+  --note-bar: #7cc2f0;
+  --note-text: #0d2c45;
+}
+.note-c-gray {
+  --note-bg: #eef0f2;
+  --note-bar: #b8bec4;
+  --note-text: #26292c;
+}
+:root[data-theme='dark'] .note-c-yellow {
+  --note-bg: #3d3719;
+  --note-bar: #c9ab2a;
+  --note-text: #fbf1c4;
+}
+:root[data-theme='dark'] .note-c-green {
+  --note-bg: #1f3824;
+  --note-bar: #4fa95d;
+  --note-text: #d8f3dc;
+}
+:root[data-theme='dark'] .note-c-pink {
+  --note-bg: #432231;
+  --note-bar: #d66a9c;
+  --note-text: #fbdcea;
+}
+:root[data-theme='dark'] .note-c-purple {
+  --note-bg: #312a4a;
+  --note-bar: #8f76d6;
+  --note-text: #e6defc;
+}
+:root[data-theme='dark'] .note-c-blue {
+  --note-bg: #1c3246;
+  --note-bar: #4c9bd1;
+  --note-text: #d7ecfb;
+}
+:root[data-theme='dark'] .note-c-gray {
+  --note-bg: #34383c;
+  --note-bar: #7d858c;
+  --note-text: #e6e9ec;
+}
+
+.notes-view {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.notes-view > div > .note-editor {
+  flex: 1;
+}
+.notes-main {
+  flex: 1;
+  min-width: 320px;
+  background: var(--bg);
+}
+.notes-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 24px 12px;
+  flex: none;
+  flex-wrap: wrap;
+}
+.notes-title {
+  margin: 0;
+  font-size: var(--fs-xxl);
+  font-weight: 600;
+  flex: 1;
+  min-width: 120px;
+}
+.notes-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 280px;
+  max-width: 100%;
+  height: 32px;
+  padding: 0 4px 0 10px;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-3);
+}
+.notes-search:focus-within {
+  border-color: var(--accent);
+}
+.notes-search input {
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  height: 100%;
+}
+.notes-body {
+  padding: 4px 24px 32px;
+}
+.notes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.note-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 140px;
+  max-height: 260px;
+  padding: 14px 14px 8px;
+  border-radius: var(--radius-l);
+  background: var(--note-bg);
+  color: var(--note-text);
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+  cursor: default;
+  outline: none;
+  transition: box-shadow 0.15s, transform 0.15s;
+  animation: note-in 0.18s ease-out;
+}
+.note-card:hover {
+  box-shadow: var(--shadow-8);
+  transform: translateY(-1px);
+}
+.note-card:focus-visible,
+.note-card.active {
+  box-shadow: 0 0 0 2px var(--note-bar), var(--shadow-8);
+}
+@keyframes note-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+.note-card-bar {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 5px;
+  background: var(--note-bar);
+}
+.note-card-title {
+  margin: 2px 0 6px;
+  font-size: var(--fs);
+  font-weight: 700;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  word-break: break-word;
+}
+.note-card-title.placeholder {
+  opacity: 0.55;
+  font-weight: 600;
+}
+.note-card-body {
+  margin: 0;
+  flex: 1;
+  font-size: var(--fs-s);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 7;
+  -webkit-box-orient: vertical;
+  opacity: 0.9;
+}
+.note-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 8px;
+  font-size: var(--fs-xs);
+  opacity: 0.7;
+}
+.note-card-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: inherit;
+  opacity: 0;
+}
+.note-card:hover .note-card-delete,
+.note-card:focus-within .note-card-delete {
+  opacity: 1;
+}
+.note-card-delete:hover {
+  background: color-mix(in srgb, var(--note-text) 12%, transparent);
+}
+
+/* editor */
+.note-editor {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--note-bg);
+  color: var(--note-text);
+  border-left: 1px solid var(--divider);
+  border-top: 5px solid var(--note-bar);
+}
+.note-editor .icon-btn {
+  color: var(--note-text);
+}
+.note-editor .icon-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--note-text) 10%, transparent);
+  color: var(--note-text);
+}
+.note-editor-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 8px 4px 16px;
+  flex: none;
+}
+.note-swatches {
+  display: flex;
+  gap: 6px;
+}
+.note-swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--note-text) 25%, transparent);
+  background: var(--note-bar);
+}
+.note-swatch.active {
+  box-shadow: 0 0 0 2px var(--note-bg), 0 0 0 4px var(--note-bar);
+}
+.note-swatch:hover {
+  transform: scale(1.08);
+}
+.note-editor-title {
+  border: none;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font-size: var(--fs-xl);
+  font-weight: 700;
+  padding: 10px 20px 4px;
+  flex: none;
+}
+.note-editor-body {
+  flex: 1;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: inherit;
+  padding: 8px 20px 16px;
+  line-height: 1.55;
+  font-size: var(--fs);
+}
+.note-editor-title::placeholder,
+.note-editor-body::placeholder {
+  color: inherit;
+  opacity: 0.45;
+}
+.note-editor-footer {
+  flex: none;
+  padding: 8px 20px;
+  font-size: var(--fs-xs);
+  opacity: 0.65;
+  border-top: 1px solid color-mix(in srgb, var(--note-text) 12%, transparent);
+}

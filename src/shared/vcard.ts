@@ -34,7 +34,7 @@ function unesc(v: string): string {
 }
 
 function esc(v: string): string {
-  return v.replace(/\\/g, '\\\\').replace(/;/g, '\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+  return v.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
 }
 
 function splitUnescaped(v: string, sep: string): string[] {

@@ -98,7 +98,7 @@ export function unescapeText(v: string): string {
 }
 
 export function escapeText(v: string): string {
-  return v.replace(/\\/g, '\\\\').replace(/;/g, '\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+  return v.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
 }
 
 function tzOffset(utcMs: number, tz: string): number {

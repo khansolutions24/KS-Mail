@@ -18,6 +18,7 @@ import { MailService, describeError } from './mail/service';
 import { CalendarService } from './pim/calendar';
 import { ContactService } from './pim/contacts';
 import { TaskService } from './pim/tasks';
+import { seedDemoPim } from './pim/demoData';
 
 export interface Backend {
   api: Api;
@@ -102,10 +103,16 @@ export function createBackend(): Backend {
         };
         const saved = config.saveAccount(a);
         await mail.seedDemo(saved);
+        seedDemoPim(calendar, contacts, tasks);
+        emit('calendar:changed', null);
+        emit('contacts:changed', null);
+        emit('tasks:changed', null);
+        emit('notes:changed', null);
         if (!config.getSettings().defaultAccountId) config.updateSettings({ defaultAccountId: saved.id });
         mail.startAccount(saved);
         emit('accounts:changed', null);
         emit('folders:changed', { accountId: saved.id });
+        emit('mail:changed', { accountId: saved.id, folderIds: [] });
         return saved;
       }
     },

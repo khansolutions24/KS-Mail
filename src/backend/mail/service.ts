@@ -1050,22 +1050,24 @@ export class MailService {
     });
   }
 
-  async send(draft: Draft): Promise<void> {
+  async send(draft: Draft): Promise<string> {
     const all = [...draft.to, ...draft.cc, ...draft.bcc];
     if (!all.length) throw new Error('Bitte mindestens einen Empfänger angeben.');
     const bad = all.find((a) => !isValidEmail(a.address));
     if (bad) throw new Error(`Ungültige E-Mail-Adresse: ${bad.address}`);
     if (!this.config.getAccount(draft.accountId)) throw new Error('Absenderkonto nicht gefunden.');
     const delay = draft.sendAt && draft.sendAt > Date.now() ? draft.sendAt - Date.now() : this.config.getSettings().mail.undoSendSeconds * 1000;
-    await this.enqueue(draft, delay);
+    const id = await this.enqueue(draft, delay);
     this.db.run('DELETE FROM local_drafts WHERE id = ?', draft.id);
+    return id;
   }
 
-  private async enqueue(draft: Draft, delayMs: number, extra?: ExtraParts): Promise<void> {
+  private async enqueue(draft: Draft, delayMs: number, extra?: ExtraParts): Promise<string> {
     const id = newId();
     this.db.run('INSERT INTO outbox(id, account_id, draft_json, send_at, status) VALUES(?,?,?,?,?)', id, draft.accountId, JSON.stringify({ ...draft, extra }), Date.now() + delayMs, 'queued');
     emit('outbox:changed', null);
     if (delayMs <= 0) void this.processOutbox();
+    return id;
   }
 
   cancelOutbox(id: string): Draft | null {

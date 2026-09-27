@@ -28,6 +28,9 @@ let tray: Tray | null = null;
 let quitting = false;
 let pendingMailto: string | null = null;
 
+// fixed name → data lives in %APPDATA%\KS Mail resp. ~/Library/Application Support/KS Mail, also when started unpackaged
+app.setName('KS Mail');
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 }
