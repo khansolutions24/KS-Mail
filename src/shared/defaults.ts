@@ -67,7 +67,7 @@ export function defaultSettings(): Settings {
       defaultCalendarId: null
     },
     outOfOffice: { enabled: false, from: null, to: null, subject: 'Abwesenheitsnotiz', text: '', onlyContacts: false },
-    oauth: { microsoftClientId: '', microsoftTenant: 'common', googleClientId: '', googleClientSecret: '' },
+    oauth: { microsoftClientId: '', microsoftTenant: 'common', microsoftClientSecret: '', googleClientId: '', googleClientSecret: '' },
     shortcuts: [],
     signatures: [],
     rules: [],

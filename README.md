@@ -72,7 +72,7 @@ Microsoft und Google erlauben IMAP mit normalem Passwort meist nicht mehr. Zwei 
 
 1. **App-Passwort** beim Anbieter erzeugen (Gmail: Google-Konto → Sicherheit → App-Passwörter; Outlook.com: Microsoft-Konto → Sicherheit) und als Passwort verwenden.
 2. **OAuth**: eigene App registrieren und die Client-ID unter *Einstellungen → Konten → OAuth* eintragen.
-   - *Microsoft (Azure Portal → App-Registrierungen)*: Plattform „Mobile- und Desktopanwendungen“, Umleitungs-URI `http://localhost`, API-Berechtigungen `IMAP.AccessAsUser.All`, `SMTP.Send`, `offline_access`.
+   - *Microsoft (Azure Portal → App-Registrierungen)*: Plattform **„Mobile- und Desktopanwendungen“** (nicht „Web“), Umleitungs-URI `http://localhost`, unter *Authentifizierung* „Öffentliche Clientflows zulassen“ = **Ja**, API-Berechtigungen `IMAP.AccessAsUser.All`, `SMTP.Send`, `offline_access`. Meldet Microsoft `AADSTS7000218` (Client-Secret erforderlich), ist die URI unter „Web“ eingetragen – dann umstellen oder ein Client-Secret in den Einstellungen hinterlegen.
    - *Google (Cloud Console → APIs & Dienste → Anmeldedaten)*: OAuth-Client vom Typ „Desktop-App“, Scope `https://mail.google.com/`; Client-ID und Client-Secret eintragen.
 
 ## Entwicklung

@@ -24,6 +24,7 @@ function conf(provider: OAuthProvider, s: Settings): ProviderConf {
       tokenUrl: `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`,
       scope: 'https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send offline_access openid email',
       clientId: s.oauth.microsoftClientId,
+      clientSecret: s.oauth.microsoftClientSecret || undefined,
       host: 'localhost',
       extra: { prompt: 'select_account' }
     };
@@ -56,7 +57,21 @@ async function tokenRequest(c: ProviderConf, body: Record<string, string>): Prom
   if (c.clientSecret) params.set('client_secret', c.clientSecret);
   const res = await fetch(c.tokenUrl, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: params });
   const json = (await res.json()) as TokenResponse;
-  if (!res.ok || json.error) throw new Error(`OAuth-Fehler: ${json.error_description ?? json.error ?? res.statusText}`);
+  if (!res.ok || json.error) {
+    const desc = json.error_description ?? json.error ?? res.statusText;
+    // Azure app registered as "Web" (confidential client) instead of "Mobile and desktop applications"
+    if (/AADSTS7000218|AADSTS700025/.test(desc)) {
+      throw new Error(
+        'Microsoft verlangt ein Client-Secret, weil die App in Azure als Web-App registriert ist. Lösung: Azure-Portal → App-Registrierungen → Authentifizierung → ' +
+          'Umleitungs-URI http://localhost unter „Mobile- und Desktopanwendungen“ eintragen und „Öffentliche Clientflows zulassen“ auf „Ja“ stellen. ' +
+          'Alternativ ein Client-Secret erstellen und unter Einstellungen → Konten → OAuth eintragen.'
+      );
+    }
+    if (/AADSTS50011/.test(desc)) {
+      throw new Error('Die Umleitungs-URI passt nicht: in Azure unter „Mobile- und Desktopanwendungen“ die URI http://localhost eintragen.');
+    }
+    throw new Error(`OAuth-Fehler: ${desc}`);
+  }
   return json;
 }
 

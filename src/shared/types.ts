@@ -407,6 +407,8 @@ export interface Settings {
   oauth: {
     microsoftClientId: string;
     microsoftTenant: string;
+    /** Only needed when the Azure app is registered as a web app (confidential client) */
+    microsoftClientSecret: string;
     googleClientId: string;
     googleClientSecret: string;
   };

@@ -177,6 +177,9 @@ export function AccountsSection({ settings }: SectionProps): JSX.Element {
         <Row label="Microsoft Mandant" hint="„common“ für private und geschäftliche Konten, „consumers“ nur privat oder die Mandanten-ID">
           <TextInput value={settings.oauth.microsoftTenant} onCommit={(v) => void patchGroup('oauth', { microsoftTenant: v.trim() || 'common' })} placeholder="common" spellCheck={false} style={{ width: 340 }} />
         </Row>
+        <Row label="Microsoft Client-Secret (optional)" hint="Nur nötig, wenn die App in Azure als „Web“ statt „Mobile- und Desktopanwendungen“ registriert ist">
+          <TextInput type="password" value={settings.oauth.microsoftClientSecret ?? ''} onCommit={(v) => void patchGroup('oauth', { microsoftClientSecret: v.trim() })} spellCheck={false} autoComplete="off" style={{ width: 340 }} />
+        </Row>
         <Row label="Google Client-ID">
           <TextInput value={settings.oauth.googleClientId} onCommit={(v) => void patchGroup('oauth', { googleClientId: v.trim() })} placeholder="….apps.googleusercontent.com" spellCheck={false} style={{ width: 340 }} />
         </Row>
