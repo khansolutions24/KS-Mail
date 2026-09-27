@@ -343,7 +343,12 @@ export class DemoRemote implements Remote {
       flags: new Set(flags),
       hasAttachments: parsed.attachments.some((a) => a.contentDisposition !== 'inline'),
       snippet: snippetOf(text),
-      headers: {}
+      headers: Object.fromEntries(
+        ['list-unsubscribe', 'list-id', 'precedence', 'auto-submitted']
+          .map((k) => [k, parsed.headers.get(k)])
+          .filter(([, v]) => v)
+          .map(([k, v]) => [k, typeof v === 'string' ? v : JSON.stringify(v)])
+      )
     });
     this.store.recount([fid]);
     return uid;

@@ -227,6 +227,20 @@ export function MessageList(): JSX.Element {
   const isSent = folder?.specialUse === 'sent' || folder?.specialUse === 'drafts';
   const list = s.serverResults ?? s.items;
   const conversations = settings?.mail.conversationView ?? false;
+  const focusedMode = !!settings?.mail.focusedInbox && (s.folderId === VIRTUAL.unifiedInbox || folder?.specialUse === 'inbox') && !s.search;
+  const tabs = focusedMode
+    ? ([
+        { id: 'focused', label: 'Relevant' },
+        { id: 'other', label: 'Sonstige' }
+      ] as const)
+    : FILTERS.slice(0, 2);
+
+  // the focused inbox replaces the Alle/Ungelesen tabs in inbox folders
+  useEffect(() => {
+    if (focusedMode && s.filter !== 'focused' && s.filter !== 'other') s.setFilter('focused');
+    if (!focusedMode && (s.filter === 'focused' || s.filter === 'other')) s.setFilter('all');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedMode]);
 
   const entries = useMemo<Entry[]>(() => {
     let msgs: { m: MessageHeader; count: number }[];
@@ -291,7 +305,7 @@ export function MessageList(): JSX.Element {
         </div>
         <div className="list-tools">
           <div className="list-filter-tabs">
-            {FILTERS.slice(0, 2).map((f) => (
+            {tabs.map((f) => (
               <button key={f.id} className={clsx('tab', s.filter === f.id && 'active')} onClick={() => s.setFilter(f.id)}>
                 {f.label}
                 {f.id === 'unread' && unreadCount > 0 ? ` (${unreadCount})` : ''}
@@ -302,7 +316,7 @@ export function MessageList(): JSX.Element {
           <Menu
             align="end"
             trigger={
-              <IconButton small label="Filter" active={s.filter !== 'all' && s.filter !== 'unread'}>
+              <IconButton small label="Filter" active={!['all', 'unread', 'focused', 'other'].includes(s.filter)}>
                 <Filter size={15} />
               </IconButton>
             }

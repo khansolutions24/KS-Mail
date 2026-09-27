@@ -122,7 +122,7 @@ export interface MessageQuery {
   /** Folder id, or one of the virtual views */
   folderId: string;
   search?: string;
-  filter?: 'all' | 'unread' | 'flagged' | 'attachments' | 'mentions' | 'toMe';
+  filter?: 'all' | 'unread' | 'flagged' | 'attachments' | 'focused' | 'other';
   sort?: SortField;
   desc?: boolean;
   offset?: number;
@@ -164,6 +164,8 @@ export interface Draft {
   serverDraftMessageId?: number;
   /** Send later: timestamp (ms) */
   sendAt?: number | null;
+  /** Send as plain text only (no HTML part) */
+  plainText?: boolean;
 }
 
 export interface DraftAttachment {

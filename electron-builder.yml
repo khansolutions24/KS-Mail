@@ -1,6 +1,7 @@
 appId: de.ks.ksmail
 productName: KS Mail
 copyright: Copyright © 2026 KS
+publish: null
 directories:
   output: release
   buildResources: build

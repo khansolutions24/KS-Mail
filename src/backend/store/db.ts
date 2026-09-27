@@ -20,7 +20,7 @@ const SCHEMA = [
     seen INTEGER NOT NULL DEFAULT 0, flagged INTEGER NOT NULL DEFAULT 0, answered INTEGER NOT NULL DEFAULT 0, forwarded INTEGER NOT NULL DEFAULT 0,
     draft INTEGER NOT NULL DEFAULT 0, has_attachments INTEGER NOT NULL DEFAULT 0, snippet TEXT NOT NULL DEFAULT '',
     categories TEXT NOT NULL DEFAULT '[]', due_at INTEGER, snoozed_until INTEGER, pinned INTEGER NOT NULL DEFAULT 0,
-    headers_json TEXT NOT NULL DEFAULT '{}', UNIQUE(folder_id, uid))`,
+    headers_json TEXT NOT NULL DEFAULT '{}', is_other INTEGER NOT NULL DEFAULT 0, UNIQUE(folder_id, uid))`,
   `CREATE INDEX IF NOT EXISTS messages_folder_date ON messages(folder_id, date DESC)`,
   `CREATE INDEX IF NOT EXISTS messages_thread ON messages(account_id, thread_key)`,
   `CREATE INDEX IF NOT EXISTS messages_msgid ON messages(message_id)`,
@@ -38,6 +38,9 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS notes (id TEXT PRIMARY KEY, json TEXT NOT NULL)`
 ];
 
+/** Idempotent schema upgrades for databases created by older versions */
+const MIGRATIONS = [`ALTER TABLE messages ADD COLUMN is_other INTEGER NOT NULL DEFAULT 0`];
+
 export class Db {
   readonly raw: DatabaseSync;
   private cache = new Map<string, StatementSync>();
@@ -47,6 +50,13 @@ export class Db {
     this.raw = new DatabaseSync(file);
     this.raw.exec('PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = OFF;');
     for (const s of SCHEMA) this.raw.exec(s);
+    for (const m of MIGRATIONS) {
+      try {
+        this.raw.exec(m);
+      } catch {
+        // already applied
+      }
+    }
   }
 
   stmt(sql: string): StatementSync {

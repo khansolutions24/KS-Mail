@@ -37,7 +37,7 @@ export function sanitizeHtml(html: string): string {
   return html
     .replace(/<(script|iframe|object|embed|applet|frame|frameset|form|noscript)\b[\s\S]*?<\/\1\s*>/gi, '')
     .replace(/<(script|iframe|object|embed|applet|frame|frameset|meta|base|link(?![^>]*stylesheet))\b[^>]*>/gi, '')
-    .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/[\s/]on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, ' ')
     .replace(/(href|src|action)\s*=\s*(["'])\s*javascript:[^"']*\2/gi, '$1="#"');
 }
 

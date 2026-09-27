@@ -51,6 +51,7 @@ describe('sanitizeHtml', () => {
   it('removes scripts, handlers and javascript urls', () => {
     const out = sanitizeHtml('<p onclick="x()">a</p><script>alert(1)</script><iframe src="x"></iframe><a href="javascript:alert(1)">l</a><meta http-equiv="refresh" content="0">');
     expect(out).not.toMatch(/script|onclick|iframe|javascript:|refresh/i);
-    expect(out).toContain('<p>a</p>');
+    expect(out).toMatch(/<p\s*>a<\/p>/);
+    expect(sanitizeHtml('<img/onerror=alert(1) src=x>')).not.toMatch(/onerror/);
   });
 });

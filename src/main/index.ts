@@ -16,6 +16,7 @@ import {
   type MenuItemConstructorOptions
 } from 'electron';
 import { IPC_EVENT, IPC_INVOKE } from '@shared/api';
+import pkg from '../../package.json';
 import { createBackend, dispatch, type Backend } from '../backend/api';
 import { emit, onEmit } from '../backend/events';
 import { plainDecrypt, plainEncrypt, setPlatform } from '../backend/platform';
@@ -100,7 +101,7 @@ function createWindow(route: string): BrowserWindow {
     titleBarOverlay: !isMac ? { color: '#00000000', symbolColor: nativeTheme.shouldUseDarkColors ? '#ffffff' : '#242424', height: 40 } : undefined,
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
       spellcheck: true,
@@ -333,7 +334,7 @@ void app.whenReady().then(() => {
   setPlatform({
     dataDir: app.getPath('userData'),
     electron: true,
-    version: app.getVersion(),
+    version: pkg.version,
     secureStorage: secure,
     encrypt: (s) => (secure ? 'enc:' + safeStorage.encryptString(s).toString('base64') : plainEncrypt(s)),
     decrypt: (s) => (s.startsWith('enc:') ? safeStorage.decryptString(Buffer.from(s.slice(4), 'base64')) : plainDecrypt(s)),

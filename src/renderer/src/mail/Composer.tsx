@@ -30,16 +30,18 @@ import {
   AlertTriangle,
   ArrowDown,
   MailCheck,
-  LayoutTemplate
+  LayoutTemplate,
+  Type
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Address, Draft, DraftAttachment } from '@shared/types';
-import { escapeHtml, formatAddress, formatBytes, isValidEmail, newId, parseAddressList } from '@shared/util';
+import { escapeHtml, formatAddress, formatBytes, htmlToText, isValidEmail, newId, parseAddressList } from '@shared/util';
 import { api, errorMessage, isElectron, pathForFile } from '../api/client';
 import { Button, Dialog, IconButton, Menu } from '../components/ui';
 import { registerCommands } from '../lib/commands';
 import { addDays, fromInputDateTime, longDate, startOfDay, toInputDateTime } from '../lib/format';
 import { attempt, confirm, prompt, toast, useApp } from '../store/app';
+import { sanitizeForEditor } from '../lib/sanitize';
 import { signatureHtml } from './compose';
 
 // ─── recipients ───
@@ -371,7 +373,7 @@ export function Composer({ draft: initial, onClose, standalone }: { draft: Draft
   useEffect(() => {
     const el = editorRef.current;
     if (!el) return;
-    el.innerHTML = initial.html;
+    el.innerHTML = initial.plainText ? escapeHtml(htmlToText(sanitizeForEditor(initial.html))).replace(/\n/g, '<br>') : sanitizeForEditor(initial.html);
     if (initial.to.length && initial.subject) {
       el.focus();
       const range = document.createRange();
@@ -618,6 +620,26 @@ export function Composer({ draft: initial, onClose, standalone }: { draft: Draft
         <Button variant="subtle" icon={<MailCheck size={15} />} className={clsx(d.requestReadReceipt && 'toggled')} onClick={() => update({ requestReadReceipt: !d.requestReadReceipt })}>
           Lesebestätigung
         </Button>
+        <Menu
+          trigger={
+            <Button variant="subtle" icon={<Type size={15} />}>
+              {d.plainText ? 'Nur-Text' : 'HTML'}
+            </Button>
+          }
+          items={[
+            { label: 'HTML (formatiert)', checked: !d.plainText, onSelect: () => update({ plainText: false }) },
+            {
+              label: 'Nur-Text',
+              checked: !!d.plainText,
+              onSelect: () => {
+                // drop formatting right away so what you see is what gets sent
+                const el = editorRef.current;
+                if (el) el.innerHTML = escapeHtml(el.innerText).replace(/\n/g, '<br>');
+                update({ plainText: true });
+              }
+            }
+          ]}
+        />
         <div className="grow" />
         {savedAt && <span className="muted small-text">Gespeichert {new Date(savedAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}</span>}
         <IconButton label="Entwurf speichern" onClick={() => void saveToServer()}>
@@ -688,10 +710,10 @@ export function Composer({ draft: initial, onClose, standalone }: { draft: Draft
           {total > 20 * 1024 * 1024 && <span className="small-text" style={{ color: 'var(--warning)' }}>Achtung: {formatBytes(total)} – viele Server erlauben max. 20–25 MB.</span>}
         </div>
       )}
-      <Toolbar onAttach={() => void pickAttachments()} onInsertImage={insertImage} onSignature={insertSignature} onTemplate={insertTemplate} />
+      {!d.plainText && <Toolbar onAttach={() => void pickAttachments()} onInsertImage={insertImage} onSignature={insertSignature} onTemplate={insertTemplate} />}
       <div
         ref={editorRef}
-        className="composer-editor selectable"
+        className={clsx('composer-editor selectable', d.plainText && 'plain')}
         contentEditable
         suppressContentEditableWarning
         spellCheck
@@ -701,7 +723,10 @@ export function Composer({ draft: initial, onClose, standalone }: { draft: Draft
         onPaste={(e) => {
           const files = Array.from(e.clipboardData.files);
           const images = files.filter((f) => f.type.startsWith('image/'));
-          if (images.length) {
+          if (d.plainText && !files.length) {
+            e.preventDefault();
+            exec('insertText', e.clipboardData.getData('text/plain'));
+          } else if (images.length && !d.plainText) {
             e.preventDefault();
             for (const img of images) void readAsBase64(img).then((data) => exec('insertHTML', `<img src="data:${img.type};base64,${data}" style="max-width:100%">`));
           } else if (files.length) {

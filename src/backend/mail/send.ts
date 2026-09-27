@@ -52,7 +52,7 @@ export async function buildMessage(account: Account, draft: Draft, resolve: Atta
     cc: draft.cc.map(formatAddress),
     bcc: draft.bcc.map(formatAddress),
     subject: draft.subject,
-    html: `<!doctype html><html><head><meta charset="utf-8"></head><body>${html}</body></html>`,
+    html: draft.plainText ? undefined : `<!doctype html><html><head><meta charset="utf-8"></head><body>${html}</body></html>`,
     text: htmlToText(html),
     attachments,
     headers,

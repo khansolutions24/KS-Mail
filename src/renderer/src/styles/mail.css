@@ -807,3 +807,8 @@
 .composer.standalone {
   -webkit-app-region: no-drag;
 }
+
+.composer-editor.plain {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}

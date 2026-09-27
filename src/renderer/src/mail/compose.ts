@@ -42,7 +42,8 @@ export function newDraft(opts: { to?: Address[]; cc?: Address[]; bcc?: Address[]
     html: wrapBody(`<p>${opts.html ?? '<br>'}</p>${signatureHtml(accountId, false)}`),
     attachments: [],
     mode: 'new',
-    importance: 'normal'
+    importance: 'normal',
+    plainText: useApp.getState().settings?.mail.composeFormat === 'text'
   };
 }
 
@@ -65,6 +66,7 @@ export async function replyDraft(mode: 'reply' | 'replyAll' | 'forward', message
   const top = useApp.getState().settings?.mail.replyQuotePosition !== 'bottom';
   const sig = signatureHtml(d.accountId, true);
   d.html = top ? wrapBody(`<p><br></p>${sig}${d.html}`) : wrapBody(`${d.html}<p><br></p>${sig}`);
+  d.plainText = useApp.getState().settings?.mail.composeFormat === 'text';
   return d;
 }
 

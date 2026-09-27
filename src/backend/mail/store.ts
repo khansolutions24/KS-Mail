@@ -51,6 +51,7 @@ export interface MessageRow {
   snoozed_until: number | null;
   pinned: number;
   headers_json: string;
+  is_other: number;
 }
 
 export function folderId(accountId: string, path: string): string {
@@ -128,6 +129,14 @@ export interface NewMessage {
   hasAttachments: boolean;
   snippet: string;
   headers: Record<string, string>;
+}
+
+/** "Other" in the focused inbox: newsletters, notifications and other automated mail */
+export function isOther(from: string, headers: Record<string, string>): boolean {
+  if (headers['list-id'] || headers['list-unsubscribe']) return true;
+  if (/bulk|list|junk/i.test(headers['precedence'] ?? '')) return true;
+  if (headers['auto-submitted'] && headers['auto-submitted'] !== 'no') return true;
+  return /^(no-?reply|noreply|donotreply|do-not-reply|newsletter|news|info|notifications?|mailer-daemon|marketing)[@.+-]/i.test(from);
 }
 
 /** Thread key: first Message-ID of the reference chain, else the normalised subject */
@@ -231,8 +240,8 @@ export class MailStore {
     if (m.messageId) this.db.run('DELETE FROM messages WHERE folder_id = ? AND uid < 0 AND message_id = ?', m.folderId, m.messageId);
     const r = this.db.run(
       `INSERT INTO messages(account_id, folder_id, uid, message_id, in_reply_to, refs, thread_key, subject, from_name, from_addr, to_json, cc_json,
-         date, size, seen, flagged, answered, forwarded, draft, has_attachments, snippet, headers_json)
-       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+         date, size, seen, flagged, answered, forwarded, draft, has_attachments, snippet, headers_json, is_other)
+       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT(folder_id, uid) DO UPDATE SET seen=excluded.seen, flagged=excluded.flagged, answered=excluded.answered, forwarded=excluded.forwarded`,
       m.accountId,
       m.folderId,
@@ -255,7 +264,8 @@ export class MailStore {
       f.has('\\Draft') ? 1 : 0,
       m.hasAttachments ? 1 : 0,
       m.snippet,
-      JSON.stringify(m.headers)
+      JSON.stringify(m.headers),
+      isOther(m.from.address, m.headers) ? 1 : 0
     );
     return r.lastInsertRowid;
   }
@@ -369,6 +379,12 @@ export class MailStore {
         break;
       case 'attachments':
         where.push('has_attachments = 1');
+        break;
+      case 'focused':
+        where.push('is_other = 0');
+        break;
+      case 'other':
+        where.push('is_other = 1');
         break;
     }
     if (q.category) {
