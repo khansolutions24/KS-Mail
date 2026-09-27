@@ -29,7 +29,8 @@ import type { ConfigStore } from '../store/config';
 import type { Db } from '../store/db';
 import { DemoRemote } from './demo';
 import { ImapAccount, type AuthProvider, type SyncResult } from './imap';
-import { accessToken, forgetToken } from './oauth';
+import { accessToken, ConsentRequiredError, forgetToken, GRAPH_SCOPE } from './oauth';
+import { checkAccess, sendMime } from './graph';
 import { attachmentInfos, buildBody, parseRaw } from './parse';
 import type { Remote } from './remote';
 import { buildMessage, sendRaw, testSmtp, type ExtraParts } from './send';
@@ -103,6 +104,39 @@ export class MailService {
       }
       return { user: account.imap.user || account.email, pass: account.imap.password ?? secret.password ?? '' };
     };
+  }
+
+  /** Microsoft account signed in with OAuth: Graph is available for sending and the calendar */
+  usesGraph(a: Account): boolean {
+    return a.kind === 'imap' && a.auth === 'oauth2' && a.oauthProvider === 'microsoft';
+  }
+
+  private sendsViaGraph(a: Account): boolean {
+    const via = a.sendVia ?? 'auto';
+    return via === 'graph' || (via === 'auto' && this.usesGraph(a));
+  }
+
+  /** Access token for Microsoft Graph (Mail.Send, Calendars.ReadWrite) */
+  async graphToken(accountId: string): Promise<string> {
+    const a = this.config.getAccount(accountId);
+    if (!a || !this.usesGraph(a)) throw new Error('Microsoft 365 ist nur für Microsoft-Konten mit OAuth-Anmeldung verfügbar.');
+    const secret = this.config.getSecret(a.id);
+    if (!secret.refreshToken) throw new Error('Nicht angemeldet – bitte in den Kontoeinstellungen mit Microsoft anmelden.');
+    try {
+      return await accessToken(
+        a.id,
+        'microsoft',
+        secret.refreshToken,
+        this.config.getSettings(),
+        (rt) => this.config.setSecret(a.id, { ...this.config.getSecret(a.id), refreshToken: rt }),
+        GRAPH_SCOPE
+      );
+    } catch (err) {
+      if (err instanceof ConsentRequiredError) {
+        throw new Error('Für Senden und Kalender über Microsoft 365 ist eine erneute Anmeldung nötig: Einstellungen → Konten → Konto bearbeiten → „Mit Microsoft anmelden“.');
+      }
+      throw err;
+    }
   }
 
   private smtpAuthFor(account: Account): AuthProvider {
@@ -197,6 +231,11 @@ export class MailService {
       res.imap = { ok: false, message: describeError(err) };
     }
     try {
+      if (this.sendsViaGraph(a) && this.config.getAccount(a.id)) {
+        await checkAccess(await this.graphToken(a.id));
+        res.smtp = { ok: true, message: 'Versand über Microsoft 365 (Graph) möglich' };
+        return res;
+      }
       await testSmtp(a, this.smtpAuthFor(a));
       res.smtp = { ok: true, message: 'Verbindung erfolgreich' };
     } catch (err) {
@@ -1138,9 +1177,12 @@ export class MailService {
     const a = this.config.getAccount(d.accountId);
     if (!a) throw new Error('Absenderkonto nicht gefunden.');
     const msg = await buildMessage(a, d, (ref) => this.attachment(ref.messageId, ref.index), extra);
-    if (a.kind !== 'demo') await sendRaw(a, this.smtpAuthFor(a), msg);
+    const viaGraph = this.sendsViaGraph(a);
+    if (viaGraph) await sendMime(await this.graphToken(a.id), msg.raw);
+    else if (a.kind !== 'demo') await sendRaw(a, this.smtpAuthFor(a), msg);
     const r = this.runners.get(a.id);
-    if (r && (a.saveSent || a.kind === 'demo')) {
+    // Exchange stores sent mail itself when sending through Graph
+    if (r && !viaGraph && (a.saveSent || a.kind === 'demo')) {
       let sent = this.store.folderBySpecial(a.id, 'sent');
       if (!sent) {
         await r.remote.createFolder('Sent').catch(() => undefined);
@@ -1301,6 +1343,10 @@ export function describeError(err: unknown): string {
   if (e?.code === 'ENOTFOUND') return 'Server nicht gefunden – bitte Servernamen prüfen.';
   if (e?.code === 'ECONNREFUSED') return 'Verbindung abgelehnt – bitte Port und Verschlüsselung prüfen.';
   if (e?.code === 'ETIMEDOUT' || e?.code === 'ETIMEOUT') return 'Zeitüberschreitung bei der Verbindung.';
+  const text = `${e?.response ?? ''} ${e?.message ?? ''}`;
+  if (/5\.7\.139|SmtpClientAuthentication is disabled/i.test(text)) {
+    return 'Microsoft 365 erlaubt für dieses Konto keinen SMTP-Versand (SMTP AUTH ist im Mandanten abgeschaltet). Lösung: Konto mit „Mit Microsoft anmelden“ (OAuth) einrichten – KS Mail sendet dann über Microsoft Graph. Alternativ kann ein Administrator SMTP AUTH für das Postfach aktivieren.';
+  }
   if (e?.code === 'EAUTH') return `Anmeldung am SMTP-Server fehlgeschlagen: ${e.response ?? e.message ?? ''}`;
   return e?.responseText || e?.message || String(err);
 }

@@ -203,7 +203,7 @@ export function CalendarSection({ settings }: SectionProps): JSX.Element {
 
       <Card title="Neue Termine">
         <Row label="Standardkalender">
-          <Select<string | null> value={c.defaultCalendarId} options={[{ value: null, label: '(Erster Kalender)' }, ...calendars.filter((x) => !x.subscriptionUrl).map((x) => ({ value: x.id, label: x.name }))]} onChange={(defaultCalendarId) => set({ defaultCalendarId })} />
+          <Select<string | null> value={c.defaultCalendarId} options={[{ value: null, label: '(Erster Kalender)' }, ...calendars.filter((x) => !x.subscriptionUrl && (!x.remote || x.remote.canEdit)).map((x) => ({ value: x.id, label: x.name }))]} onChange={(defaultCalendarId) => set({ defaultCalendarId })} />
         </Row>
         <Row label="Standarderinnerung">
           <Select value={c.defaultReminder} options={reminders} onChange={(defaultReminder) => set({ defaultReminder })} />

@@ -75,6 +75,19 @@ Microsoft und Google erlauben IMAP mit normalem Passwort meist nicht mehr. Zwei 
    - *Microsoft (Azure Portal → App-Registrierungen)*: Plattform **„Mobile- und Desktopanwendungen“** (nicht „Web“), Umleitungs-URI `http://localhost`, unter *Authentifizierung* „Öffentliche Clientflows zulassen“ = **Ja**, API-Berechtigungen `IMAP.AccessAsUser.All`, `SMTP.Send`, `offline_access`. Meldet Microsoft `AADSTS7000218` (Client-Secret erforderlich), ist die URI unter „Web“ eingetragen – dann umstellen oder ein Client-Secret in den Einstellungen hinterlegen.
    - *Google (Cloud Console → APIs & Dienste → Anmeldedaten)*: OAuth-Client vom Typ „Desktop-App“, Scope `https://mail.google.com/`; Client-ID und Client-Secret eintragen.
 
+### Microsoft 365: Senden und Outlook-Kalender
+
+Viele Microsoft-365-Mandanten haben **SMTP AUTH abgeschaltet** (Fehler `535 5.7.139 … SmtpClientAuthentication is disabled`).
+Für Microsoft-Konten mit OAuth-Anmeldung sendet KS Mail deshalb über **Microsoft Graph** (`Mail.Send`) – Exchange legt die
+Kopie selbst in „Gesendete Elemente“ ab. Über denselben Zugang wird der **Outlook-Kalender** (`Calendars.ReadWrite`)
+in beide Richtungen synchronisiert: Termine anlegen, verschieben, löschen, Einladungen annehmen/ablehnen.
+
+Beim Klick auf „Mit Microsoft anmelden“ fragt Microsoft einmalig nach der Zustimmung zu diesen Berechtigungen.
+Bei bereits eingerichteten Konten: *Einstellungen → Konten → Konto bearbeiten → Erneut anmelden*.
+Einstellbar pro Konto: „Senden über“ (Automatisch / Microsoft 365 / SMTP) und „Outlook-Kalender synchronisieren“.
+Synchronisiert werden Termine von 90 Tagen in der Vergangenheit bis etwa ein Jahr im Voraus; Serien erscheinen als einzelne
+Vorkommen, Änderungen in KS Mail betreffen jeweils das gewählte Vorkommen.
+
 ## Entwicklung
 
 | Aufgabe | Befehl |

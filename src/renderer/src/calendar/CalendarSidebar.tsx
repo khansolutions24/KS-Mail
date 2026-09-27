@@ -1,7 +1,7 @@
 // Left side pane: "Neuer Termin", mini month and the list of calendars.
 
 import clsx from 'clsx';
-import { CalendarPlus, Download, FilePlus2, Globe, MoreHorizontal, Palette, Pencil, Plus, RefreshCw, Trash2, Upload } from 'lucide-react';
+import { CalendarPlus, Cloud, Download, FilePlus2, Globe, MoreHorizontal, Palette, Pencil, Plus, RefreshCw, Trash2, Upload } from 'lucide-react';
 import type { Calendar } from '@shared/types';
 import { Button, ContextMenu, IconButton, Menu, type MenuEntry } from '../components/ui';
 import { openNewEvent } from './actions';
@@ -31,10 +31,11 @@ function calendarMenu(cal: Calendar, count: number): MenuEntry[] {
     },
     { separator: true },
     { label: 'Exportieren (.ics)', icon: <Download size={16} />, onSelect: () => void exportCalendar(cal.id) },
-    { label: 'Importieren (.ics)', icon: <Upload size={16} />, onSelect: () => void importInto(cal.id), disabled: !!cal.subscriptionUrl }
+    { label: 'Importieren (.ics)', icon: <Upload size={16} />, onSelect: () => void importInto(cal.id), disabled: !!cal.subscriptionUrl || !!cal.remote }
   ];
   if (cal.subscriptionUrl) entries.push({ label: 'Abonnement aktualisieren', icon: <RefreshCw size={16} />, onSelect: () => void refreshCalendar(cal) });
-  entries.push({ separator: true }, { label: 'Löschen', icon: <Trash2 size={16} />, danger: true, disabled: count <= 1, onSelect: () => void deleteCalendar(cal) });
+  if (cal.remote) entries.push({ label: 'Mit Microsoft 365 synchronisieren', icon: <RefreshCw size={16} />, onSelect: () => void refreshCalendar(cal) });
+  entries.push({ separator: true }, { label: 'Löschen', icon: <Trash2 size={16} />, danger: true, disabled: count <= 1 || !!cal.remote, onSelect: () => void deleteCalendar(cal) });
   return entries;
 }
 
@@ -44,7 +45,7 @@ function CalendarItem({ cal, count }: { cal: Calendar; count: number }): JSX.Ele
   const items = (): MenuEntry[] => calendarMenu(cal, count);
   return (
     <ContextMenu items={items}>
-      <div className={clsx('nav-item cal-entry', active && 'active')} onClick={() => setActive(cal.id)} title={cal.subscriptionUrl ? `Abonniert: ${cal.subscriptionUrl}` : cal.name}>
+      <div className={clsx('nav-item cal-entry', active && 'active')} onClick={() => setActive(cal.id)} title={cal.subscriptionUrl ? `Abonniert: ${cal.subscriptionUrl}` : cal.remote ? `${cal.name} – synchronisiert mit Microsoft 365` : cal.name}>
         <input
           type="checkbox"
           className="cal-check"
@@ -56,6 +57,7 @@ function CalendarItem({ cal, count }: { cal: Calendar; count: number }): JSX.Ele
         />
         <span className="grow ellipsis">{cal.name}</span>
         {cal.subscriptionUrl && <Globe size={14} className="cal-entry-sub" />}
+        {cal.remote && <Cloud size={14} className="cal-entry-sub" />}
         <span className="cal-entry-more" onClick={(e) => e.stopPropagation()}>
           <Menu
             align="end"

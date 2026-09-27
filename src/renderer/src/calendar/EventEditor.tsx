@@ -13,7 +13,7 @@ import { AttendeeField } from './AttendeeField';
 import { atMinutes, ceilToMinutes, dayDiff, MINUTE_MS } from './dates';
 import { SHOW_AS_LABELS } from './EventParts';
 import { RecurrenceEditor } from './RecurrenceEditor';
-import { calSettings, useCalendar, type EditorState } from './store';
+import { calSettings, isWritableCalendar, useCalendar, type EditorState } from './store';
 
 export function EventEditor(): JSX.Element | null {
   const state = useCalendar((s) => s.editor);
@@ -39,7 +39,8 @@ function EditorDialog({ state }: { state: EditorState }): JSX.Element {
   const [accountId, setAccountId] = useState(() => (usableAccounts.find((a) => a.id === defaultAccountId) ?? usableAccounts[0])?.id ?? '');
 
   const isNew = !state.original;
-  const readOnly = !!calendars.find((c) => c.id === ev.calendarId)?.subscriptionUrl;
+  const cal = calendars.find((c) => c.id === ev.calendarId);
+  const readOnly = !!cal && !isWritableCalendar(cal);
   const patch = (p: Partial<CalendarEvent>): void => setEv((cur) => ({ ...cur, ...p }));
   // all-day ends are exclusive (midnight after the last day)
   const invalid = ev.allDay ? ev.end <= ev.start : ev.end < ev.start;
@@ -86,7 +87,7 @@ function EditorDialog({ state }: { state: EditorState }): JSX.Element {
   };
 
   const reminderOptions = ev.reminder != null && !REMINDER_OPTIONS.includes(ev.reminder) ? [...REMINDER_OPTIONS, ev.reminder].sort((a, b) => a - b) : REMINDER_OPTIONS;
-  const selectableCalendars = calendars.filter((c) => !c.subscriptionUrl || c.id === ev.calendarId);
+  const selectableCalendars = calendars.filter((c) => isWritableCalendar(c) || c.id === ev.calendarId);
   const canInvite = ev.attendees.length > 0 && !readOnly;
   const meetingUrl = /^https?:\/\/\S+$/i.test(ev.onlineMeetingUrl.trim()) ? ev.onlineMeetingUrl.trim() : '';
 

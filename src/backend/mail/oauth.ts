@@ -16,6 +16,11 @@ interface ProviderConf {
   extra: Record<string, string>;
 }
 
+/** Microsoft Graph: sending when SMTP AUTH is disabled in the tenant, and the Exchange calendar */
+export const GRAPH_SCOPE = 'https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/Calendars.ReadWrite offline_access';
+
+export class ConsentRequiredError extends Error {}
+
 function conf(provider: OAuthProvider, s: Settings): ProviderConf {
   if (provider === 'microsoft') {
     const tenant = s.oauth.microsoftTenant || 'common';
@@ -70,14 +75,18 @@ async function tokenRequest(c: ProviderConf, body: Record<string, string>): Prom
     if (/AADSTS50011/.test(desc)) {
       throw new Error('Die Umleitungs-URI passt nicht: in Azure unter „Mobile- und Desktopanwendungen“ die URI http://localhost eintragen.');
     }
+    if (/AADSTS65001|AADSTS65004|consent_required|interaction_required/i.test(desc) || json.error === 'invalid_grant' && /consent/i.test(desc)) {
+      throw new ConsentRequiredError(`Zustimmung erforderlich: ${desc}`);
+    }
     throw new Error(`OAuth-Fehler: ${desc}`);
   }
   return json;
 }
 
 /** Runs the interactive login; resolves with the refresh token */
-export async function oauthLogin(provider: OAuthProvider, email: string, settings: Settings): Promise<{ refreshToken: string; accessToken: string; expires: number }> {
-  const c = conf(provider, settings);
+export async function oauthLogin(provider: OAuthProvider, email: string, settings: Settings, scope?: string): Promise<{ refreshToken: string; accessToken: string; expires: number }> {
+  const base = conf(provider, settings);
+  const c = scope ? { ...base, scope } : base;
   if (!c.clientId) {
     throw new Error(
       provider === 'microsoft'
@@ -135,7 +144,7 @@ export async function oauthLogin(provider: OAuthProvider, email: string, setting
     void platform().openExternal(auth.toString());
   }).finally(() => server.close());
 
-  const tok = await tokenRequest(c, { grant_type: 'authorization_code', code, redirect_uri: redirectUri, code_verifier: verifier });
+  const tok = await tokenRequest(c, { grant_type: 'authorization_code', code, redirect_uri: redirectUri, code_verifier: verifier, scope: c.scope });
   if (!tok.refresh_token) throw new Error('Der Anbieter hat kein Refresh-Token geliefert.');
   return { refreshToken: tok.refresh_token, accessToken: tok.access_token, expires: Date.now() + tok.expires_in * 1000 };
 }
@@ -148,13 +157,16 @@ export async function accessToken(
   provider: OAuthProvider,
   refreshToken: string,
   settings: Settings,
-  onRotate: (rt: string) => void
+  onRotate: (rt: string) => void,
+  scope?: string
 ): Promise<string> {
-  const hit = cache.get(accountId);
+  const key = scope ? `${accountId}|${scope}` : accountId;
+  const hit = cache.get(key);
   if (hit && hit.expires > Date.now() + 60_000) return hit.token;
   const c = conf(provider, settings);
-  const tok = await tokenRequest(c, { grant_type: 'refresh_token', refresh_token: refreshToken, scope: c.scope });
-  cache.set(accountId, { token: tok.access_token, expires: Date.now() + tok.expires_in * 1000 });
+  // Microsoft refresh tokens work across resources: the same token yields Graph tokens once consented
+  const tok = await tokenRequest(c, { grant_type: 'refresh_token', refresh_token: refreshToken, scope: scope ?? c.scope });
+  cache.set(key, { token: tok.access_token, expires: Date.now() + tok.expires_in * 1000 });
   if (tok.refresh_token && tok.refresh_token !== refreshToken) onRotate(tok.refresh_token);
   return tok.access_token;
 }
@@ -164,5 +176,5 @@ export function primeToken(accountId: string, token: string, expires: number): v
 }
 
 export function forgetToken(accountId: string): void {
-  cache.delete(accountId);
+  for (const k of [...cache.keys()]) if (k === accountId || k.startsWith(accountId + '|')) cache.delete(k);
 }

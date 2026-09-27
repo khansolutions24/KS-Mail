@@ -136,7 +136,13 @@ export function calendarById(id: string): Calendar | undefined {
 }
 
 export function isReadOnly(ev: CalendarEvent): boolean {
-  return !!calendarById(ev.calendarId)?.subscriptionUrl;
+  const cal = calendarById(ev.calendarId);
+  return !!cal && !isWritableCalendar(cal);
+}
+
+/** Subscriptions and read-only Microsoft 365 calendars (e.g. shared ones) cannot be edited */
+export function isWritableCalendar(cal: Calendar): boolean {
+  return !cal.subscriptionUrl && (!cal.remote || cal.remote.canEdit);
 }
 
 export function occurrenceKey(o: { event: { id: string }; start: number }): string {

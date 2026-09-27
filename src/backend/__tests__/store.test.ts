@@ -55,3 +55,20 @@ describe('sanitizeHtml', () => {
     expect(sanitizeHtml('<img/onerror=alert(1) src=x>')).not.toMatch(/onerror/);
   });
 });
+
+describe('outgoing mail', () => {
+  it('removes the Bcc header for SMTP delivery but keeps recipients in the envelope', async () => {
+    const { buildMessage } = await import('../mail/send');
+    const { defaultAccount } = await import('@shared/defaults');
+    const acc = { ...defaultAccount(), email: 'me@x.de', displayName: 'Ich' };
+    const m = await buildMessage(
+      acc,
+      { id: 'd', accountId: acc.id, to: [{ name: 'A', address: 'a@x.de' }], cc: [], bcc: [{ name: 'Geheim', address: 'secret@x.de' }], subject: 'Hallo', html: '<p>x</p>', attachments: [] },
+      async () => ({ filename: '', contentType: '', content: Buffer.alloc(0) })
+    );
+    expect(m.raw.toString()).toMatch(/^Bcc:/m);
+    expect(m.withoutBcc.toString()).not.toMatch(/secret@x\.de/);
+    expect(m.envelope.to).toContain('secret@x.de');
+    expect(m.withoutBcc.toString()).toMatch(/^Subject: Hallo/m);
+  });
+});

@@ -8,7 +8,7 @@ import { api, errorMessage } from '../api/client';
 import { attempt, toast } from '../store/app';
 import { addDays, startOfDay } from '../lib/format';
 import { atMinutes, ceilToMinutes, dayDiff, DAY_MS, MINUTE_MS, minutesOfDay } from './dates';
-import { askSeries, calSettings, isReadOnly, useCalendar, type EditorState } from './store';
+import { askSeries, calSettings, isReadOnly, isWritableCalendar, useCalendar, type EditorState } from './store';
 
 export const UNTITLED = '(Ohne Titel)';
 const READ_ONLY_MSG = 'Abonnierte Internetkalender sind schreibgeschützt.';
@@ -18,7 +18,7 @@ export function defaultCalendarId(): string {
   const cals = useCalendar.getState().calendars;
   const wanted = calSettings().defaultCalendarId;
   if (!cals.length) return wanted ?? 'default'; // calendars not loaded yet
-  const writable = cals.filter((c) => !c.subscriptionUrl);
+  const writable = cals.filter(isWritableCalendar);
   return (writable.find((c) => c.id === wanted) ?? writable[0] ?? cals[0]).id;
 }
 

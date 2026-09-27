@@ -13,7 +13,7 @@ import { platform } from './platform';
 import { ConfigStore } from './store/config';
 import { Db } from './store/db';
 import { autoConfig } from './mail/autoconfig';
-import { oauthLogin, primeToken } from './mail/oauth';
+import { GRAPH_SCOPE, oauthLogin, primeToken } from './mail/oauth';
 import { MailService, describeError } from './mail/service';
 import { CalendarService } from './pim/calendar';
 import { ContactService } from './pim/contacts';
@@ -63,10 +63,13 @@ export function createBackend(): Backend {
         const saved = config.saveAccount({ ...a, imap: { ...a.imap, user: a.imap.user || a.email }, smtp: { ...a.smtp, user: a.smtp.user || a.imap.user || a.email } });
         if (isNew && !config.getSettings().defaultAccountId) config.updateSettings({ defaultAccountId: saved.id });
         await mail.restartAccount(saved);
+        if (saved.enabled && mail.usesGraph(saved) && saved.calendarSync !== false && saved.hasSecret) void calendar.syncGraph(saved.id).catch(() => undefined);
+        else calendar.dropGraph(saved.id);
         emit('accounts:changed', null);
         return saved;
       },
       remove: async (id) => {
+        calendar.dropGraph(id);
         await mail.removeAccount(id);
         config.removeAccount(id);
         if (config.getSettings().defaultAccountId === id) config.updateSettings({ defaultAccountId: config.listAccounts()[0]?.id ?? null });
@@ -82,6 +85,16 @@ export function createBackend(): Backend {
         const r = await oauthLogin(provider, email, config.getSettings());
         config.setSecret(accountId, { ...config.getSecret(accountId), refreshToken: r.refreshToken });
         primeToken(accountId, r.accessToken, r.expires);
+        if (provider === 'microsoft') {
+          // Graph (sending + calendar) needs its own consent; ask for it right away if missing
+          try {
+            await mail.graphToken(accountId);
+          } catch {
+            const g = await oauthLogin(provider, email, config.getSettings(), GRAPH_SCOPE);
+            config.setSecret(accountId, { ...config.getSecret(accountId), refreshToken: g.refreshToken });
+          }
+          void calendar.syncGraph(accountId).catch((err) => toast('error', `Kalender: ${describeError(err)}`));
+        }
         const a = config.getAccount(accountId);
         if (a) await mail.restartAccount(a);
         emit('accounts:changed', null);
@@ -180,8 +193,8 @@ export function createBackend(): Backend {
       removeCalendar: async (id) => calendar.removeCalendar(id),
       occurrences: async (from, to) => calendar.occurrences(from, to),
       get: async (id) => calendar.get(id),
-      save: async (e) => calendar.save(e),
-      remove: async (id, occ) => calendar.remove(id, occ),
+      save: (e) => calendar.saveAny(e),
+      remove: (id, occ) => calendar.removeAny(id, occ),
       importIcs: (cal, text) => calendar.importIcs(cal, text),
       exportIcs: (cal) => calendar.exportIcs(cal),
       refreshSubscription: (id) => calendar.refreshSubscription(id),

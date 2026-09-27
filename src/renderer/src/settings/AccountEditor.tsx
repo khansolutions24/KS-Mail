@@ -174,6 +174,22 @@ export function AccountEditor({ account, onClose }: { account: Account | null; o
                 </Button>
               </div>
             )}
+            {draft.auth === 'oauth2' && draft.oauthProvider === 'microsoft' && (
+              <div className="row" style={{ gap: 24, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                <Field label="Senden über" hint="Microsoft 365 blockiert SMTP oft (Fehler 5.7.139) – dann „Microsoft 365“ verwenden." style={{ minWidth: 260 }}>
+                  <Select<'auto' | 'graph' | 'smtp'>
+                    value={draft.sendVia ?? 'auto'}
+                    options={[
+                      { value: 'auto', label: 'Automatisch (Microsoft 365)' },
+                      { value: 'graph', label: 'Microsoft 365 (Graph)' },
+                      { value: 'smtp', label: 'SMTP-Server' }
+                    ]}
+                    onChange={(sendVia) => set({ sendVia })}
+                  />
+                </Field>
+                <Switch checked={draft.calendarSync !== false} onChange={(calendarSync) => set({ calendarSync })} label="Outlook-Kalender synchronisieren" />
+              </div>
+            )}
             <ServerFields
               kind="imap"
               value={draft.imap}

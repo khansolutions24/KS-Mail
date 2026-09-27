@@ -36,6 +36,10 @@ export interface Account {
   enabled: boolean;
   /** Save a copy of sent mail in the Sent folder (off for Gmail/Outlook.com, which do it themselves) */
   saveSent: boolean;
+  /** How mail is sent. 'auto' = Microsoft Graph for Microsoft accounts signed in with OAuth, SMTP otherwise */
+  sendVia?: 'auto' | 'smtp' | 'graph';
+  /** Synchronise the Microsoft 365 calendar (Microsoft accounts with OAuth) */
+  calendarSync?: boolean;
   sortOrder: number;
 }
 
@@ -231,6 +235,8 @@ export interface Calendar {
   visible: boolean;
   /** Remote ICS subscription URL (read-only) */
   subscriptionUrl?: string;
+  /** Calendar of a Microsoft 365 account, synchronised via Microsoft Graph */
+  remote?: { kind: 'graph'; accountId: string; id: string; canEdit: boolean } | null;
 }
 
 export type Recurrence = {
@@ -273,6 +279,8 @@ export interface CalendarEvent {
   updated: number;
   /** Set on an exception of a recurring series: start (ms) of the occurrence it replaces */
   recurrenceId?: number | null;
+  /** Event that lives in a server calendar (Microsoft 365) */
+  remote?: { kind: 'graph'; id: string; seriesMasterId: string | null } | null;
 }
 
 /** A concrete occurrence of an event within a range */

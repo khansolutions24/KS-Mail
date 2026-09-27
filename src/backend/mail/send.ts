@@ -9,7 +9,10 @@ import { formatAddress, htmlToText } from '@shared/util';
 import type { AuthProvider } from './imap';
 
 export interface BuiltMessage {
+  /** Complete message incl. Bcc header (Sent/Drafts copy, Microsoft Graph) */
   raw: Buffer;
+  /** Same message without the Bcc header – what SMTP recipients receive */
+  withoutBcc: Buffer;
   messageId: string;
   envelope: { from: string; to: string[] };
 }
@@ -63,7 +66,16 @@ export async function buildMessage(account: Account, draft: Draft, resolve: Atta
   };
   const composer = nodemailer.createTransport({ streamTransport: true, buffer: true, newline: 'windows' });
   const info = (await composer.sendMail(opts)) as unknown as { message: Buffer; messageId: string; envelope: { from: string; to: string[] } };
-  return { raw: info.message, messageId: info.messageId, envelope: info.envelope };
+  return { raw: info.message, withoutBcc: stripBcc(info.message), messageId: info.messageId, envelope: info.envelope };
+}
+
+/** Removes the Bcc header (incl. folded continuation lines). nodemailer's stream transport always keeps it. */
+export function stripBcc(raw: Buffer): Buffer {
+  const text = raw.toString('latin1');
+  const end = text.search(/\r?\n\r?\n/);
+  if (end < 0) return raw;
+  const head = text.slice(0, end).replace(/^bcc:[^\r\n]*(\r?\n[ \t][^\r\n]*)*(\r?\n)?/gim, '');
+  return Buffer.from(head + text.slice(end), 'latin1');
 }
 
 export async function smtpTransport(account: Account, auth: AuthProvider): Promise<Transporter<SMTPTransport.SentMessageInfo>> {
@@ -86,7 +98,7 @@ export async function smtpTransport(account: Account, auth: AuthProvider): Promi
 export async function sendRaw(account: Account, auth: AuthProvider, msg: BuiltMessage): Promise<void> {
   const t = await smtpTransport(account, auth);
   try {
-    await t.sendMail({ envelope: msg.envelope, raw: msg.raw });
+    await t.sendMail({ envelope: msg.envelope, raw: msg.withoutBcc });
   } finally {
     t.close();
   }

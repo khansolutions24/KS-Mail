@@ -13,6 +13,7 @@ import { platform } from '../platform';
 import type { ConfigStore } from '../store/config';
 import type { Db } from '../store/db';
 import type { MailService } from '../mail/service';
+import * as graph from '../mail/graph';
 
 interface EventRow {
   id: string;
@@ -39,9 +40,145 @@ export class CalendarService {
     };
     setTimeout(refreshAll, 5000);
     this.subTimer = setInterval(refreshAll, 60 * 60_000);
+    setTimeout(() => void this.syncAllGraph(), 4000);
+    this.graphTimer = setInterval(() => void this.syncAllGraph(), 5 * 60_000);
+  }
+
+  // ───────────────────────── Microsoft 365 (Graph) ─────────────────────────
+
+  private graphTimer: NodeJS.Timeout | null = null;
+  private graphSyncing = new Map<string, Promise<number>>();
+
+  private graphAccounts(): string[] {
+    return this.config
+      .listAccounts()
+      .filter((a) => a.enabled && this.mail.usesGraph(a) && a.calendarSync !== false)
+      .map((a) => a.id);
+  }
+
+  async syncAllGraph(): Promise<void> {
+    for (const id of this.graphAccounts()) {
+      await this.syncGraph(id).catch((err) => console.warn('[calendar] Microsoft 365 sync failed:', (err as Error).message));
+    }
+  }
+
+  /** Mirrors all calendars of a Microsoft 365 account (occurrences from 90 days ago to about a year ahead) */
+  syncGraph(accountId: string): Promise<number> {
+    const running = this.graphSyncing.get(accountId);
+    if (running) return running;
+    const p = this.syncGraphNow(accountId).finally(() => this.graphSyncing.delete(accountId));
+    this.graphSyncing.set(accountId, p);
+    return p;
+  }
+
+  private async syncGraphNow(accountId: string): Promise<number> {
+    const account = this.config.getAccount(accountId);
+    if (!account) return 0;
+    const token = await this.mail.graphToken(accountId);
+    const remote = await graph.calendars(token);
+    const existing = this.calendars().filter((c) => c.remote?.accountId === accountId);
+    const from = Date.now() - 90 * 86400_000;
+    const to = Date.now() + 400 * 86400_000;
+    let count = 0;
+    const views = new Map<string, Awaited<ReturnType<typeof graph.calendarView>>>();
+    for (const rc of remote) views.set(rc.id, await graph.calendarView(token, rc.id, from, to));
+    this.db.tx(() => {
+      for (const rc of remote) {
+        const id = `g:${accountId}:${rc.id}`;
+        const prev = existing.find((c) => c.id === id);
+        const label = rc.isDefaultCalendar ? `${rc.name} (${account.name || account.email})` : rc.name;
+        const cal: Calendar = {
+          id,
+          name: prev?.name ?? label,
+          color: prev?.color ?? (rc.hexColor && /^#[0-9a-f]{6}$/i.test(rc.hexColor) ? rc.hexColor : account.color),
+          visible: prev?.visible ?? true,
+          remote: { kind: 'graph', accountId, id: rc.id, canEdit: rc.canEdit !== false }
+        };
+        this.db.run('INSERT INTO calendars(id, json) VALUES(?, ?) ON CONFLICT(id) DO UPDATE SET json = excluded.json', id, JSON.stringify(cal));
+        this.db.run('DELETE FROM events WHERE calendar_id = ?', id);
+        for (const g of views.get(rc.id) ?? []) {
+          const ev = graph.toLocalEvent(g, id);
+          this.save({ ...ev, id: `g:${g.id}` }, true);
+          count++;
+        }
+      }
+      for (const c of existing) {
+        if (remote.some((rc) => `g:${accountId}:${rc.id}` === c.id)) continue;
+        this.db.run('DELETE FROM events WHERE calendar_id = ?', c.id);
+        this.db.run('DELETE FROM calendars WHERE id = ?', c.id);
+      }
+    });
+    // new events go to the Exchange calendar unless the user chose another default
+    const s = this.config.getSettings();
+    const def = remote.find((c) => c.isDefaultCalendar);
+    if (def && !s.calendar.defaultCalendarId) {
+      this.config.updateSettings({ calendar: { ...s.calendar, defaultCalendarId: `g:${accountId}:${def.id}` } });
+      emit('settings:changed', this.config.getSettings());
+    }
+    emit('calendar:changed', null);
+    return count;
+  }
+
+  /** Removes the mirrored Microsoft 365 calendars of an account (sync switched off or account removed) */
+  dropGraph(accountId: string): void {
+    const cals = this.calendars().filter((c) => c.remote?.accountId === accountId);
+    if (!cals.length) return;
+    this.db.tx(() => {
+      for (const c of cals) {
+        this.db.run('DELETE FROM events WHERE calendar_id = ?', c.id);
+        this.db.run('DELETE FROM calendars WHERE id = ?', c.id);
+      }
+    });
+    const s = this.config.getSettings();
+    if (cals.some((c) => c.id === s.calendar.defaultCalendarId)) this.config.updateSettings({ calendar: { ...s.calendar, defaultCalendarId: null } });
+    emit('calendar:changed', null);
+  }
+
+  private remoteCalendar(calendarId: string): Calendar | null {
+    const c = this.calendars().find((x) => x.id === calendarId);
+    return c?.remote ? c : null;
+  }
+
+  /** Saves an event; events in Microsoft 365 calendars are written to Exchange first */
+  async saveAny(e: CalendarEvent): Promise<CalendarEvent> {
+    const target = this.remoteCalendar(e.calendarId);
+    const prev = e.id ? this.get(e.id) : null;
+    const prevCal = prev ? this.remoteCalendar(prev.calendarId) : null;
+    if (target && !target.remote!.canEdit) throw new Error(`Der Kalender „${target.name}“ ist schreibgeschützt.`);
+    // moved out of an Exchange calendar: remove it there
+    if (prev?.remote && prevCal && prevCal.id !== target?.id) {
+      await graph.deleteEvent(await this.mail.graphToken(prevCal.remote!.accountId), prev.remote.id);
+      this.db.run('DELETE FROM events WHERE id = ?', prev.id);
+      if (!target) return this.save({ ...e, id: '', remote: null, uid: '' });
+    }
+    if (!target) return this.save(e);
+    const token = await this.mail.graphToken(target.remote!.accountId);
+    let remoteId: string;
+    if (prev?.remote && prevCal?.id === target.id) {
+      remoteId = prev.remote.id;
+      await graph.updateEvent(token, remoteId, e);
+    } else {
+      remoteId = await graph.createEvent(token, target.remote!.id, e);
+    }
+    await this.syncGraph(target.remote!.accountId);
+    return this.get(`g:${remoteId}`) ?? { ...e, id: `g:${remoteId}` };
+  }
+
+  async removeAny(id: string, occurrenceStart?: number): Promise<void> {
+    const ev = this.get(id);
+    const cal = ev ? this.remoteCalendar(ev.calendarId) : null;
+    if (ev?.remote && cal) {
+      if (!cal.remote!.canEdit) throw new Error(`Der Kalender „${cal.name}“ ist schreibgeschützt.`);
+      await graph.deleteEvent(await this.mail.graphToken(cal.remote!.accountId), ev.remote.id);
+      this.db.run('DELETE FROM events WHERE id = ?', id);
+      emit('calendar:changed', null);
+      return;
+    }
+    this.remove(id, occurrenceStart);
   }
 
   stop(): void {
+    if (this.graphTimer) clearInterval(this.graphTimer);
     if (this.reminderTimer) clearInterval(this.reminderTimer);
     if (this.subTimer) clearInterval(this.subTimer);
   }
@@ -58,6 +195,7 @@ export class CalendarService {
   }
 
   removeCalendar(id: string): void {
+    if (this.remoteCalendar(id)) throw new Error('Dieser Kalender wird über Microsoft 365 verwaltet. Blenden Sie ihn aus oder deaktivieren Sie die Kalendersynchronisation im Konto.');
     if (this.calendars().length <= 1) throw new Error('Der letzte Kalender kann nicht gelöscht werden.');
     this.db.run('DELETE FROM events WHERE calendar_id = ?', id);
     this.db.run('DELETE FROM calendars WHERE id = ?', id);
@@ -177,6 +315,7 @@ export class CalendarService {
 
   async refreshSubscription(calendarId: string): Promise<number> {
     const cal = this.calendars().find((c) => c.id === calendarId);
+    if (cal?.remote) return this.syncGraph(cal.remote.accountId);
     if (!cal?.subscriptionUrl) throw new Error('Kein abonnierter Kalender.');
     const url = cal.subscriptionUrl.replace(/^webcals?:\/\//i, 'https://');
     const res = await fetch(url);
@@ -234,6 +373,16 @@ export class CalendarService {
     if (!body.invite?.length || !header) throw new Error('Keine Einladung in dieser Nachricht.');
     const account = this.config.getAccount(header.accountId);
     if (!account) throw new Error('Konto nicht gefunden.');
+    // Microsoft 365 already put the invitation into the Exchange calendar: answer it there
+    if (this.mail.usesGraph(account) && account.calendarSync !== false) {
+      const token = await this.mail.graphToken(account.id);
+      let handled = 0;
+      for (const inv of body.invite) if (await graph.respondByUid(token, inv.uid, response, '')) handled++;
+      if (handled === body.invite.length) {
+        await this.syncGraph(account.id).catch(() => undefined);
+        return;
+      }
+    }
     const me = account.email.toLowerCase();
     for (const inv of body.invite) {
       const attendees: Attendee[] = inv.attendees.some((a) => a.email.toLowerCase() === me)
@@ -281,6 +430,8 @@ export class CalendarService {
     const account = this.config.getAccount(accountId);
     if (!ev || !account) throw new Error('Termin oder Konto nicht gefunden.');
     if (!ev.attendees.length) throw new Error('Der Termin hat keine Teilnehmer.');
+    // Exchange sends the meeting requests itself when attendees are saved
+    if (ev.remote) return;
     const organized = this.save({ ...ev, organizer: { name: account.displayName || account.name, address: account.email } });
     const when = organized.allDay
       ? new Date(organized.start).toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })
