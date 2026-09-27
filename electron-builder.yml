@@ -1,0 +1,51 @@
+appId: de.ks.ksmail
+productName: KS Mail
+copyright: Copyright © 2026 KS
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**
+  - package.json
+asarUnpack:
+  - build/icon.png
+extraResources:
+  - from: build/icon.png
+    to: icon.png
+  - from: build/tray.png
+    to: tray.png
+  - from: build/trayTemplate.png
+    to: trayTemplate.png
+protocols:
+  - name: E-Mail
+    schemes: [mailto]
+win:
+  icon: build/icon.ico
+  executableName: KS Mail
+  target:
+    - target: nsis
+      arch: [x64, arm64]
+    - target: portable
+      arch: [x64]
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: KS Mail
+  artifactName: KS-Mail-Setup-${version}.${ext}
+portable:
+  artifactName: KS-Mail-${version}-portable.${ext}
+mac:
+  icon: build/icon.png
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch: [universal]
+    - target: zip
+      arch: [universal]
+  extendInfo:
+    NSUserNotificationAlertStyle: alert
+dmg:
+  artifactName: KS-Mail-${version}.${ext}
